@@ -21,7 +21,7 @@ from pi_kiosk.totem_registration import (
 DEMO_RELEASE_URL = (
     "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
 )
-RELEASE_URL_PROMPT = "Webapp release zip URL"
+RELEASE_URL_PROMPT = "Webapp ZIP URL"
 
 
 class RootGuardTests(unittest.TestCase):

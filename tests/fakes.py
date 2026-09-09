@@ -149,8 +149,8 @@ class FakeHost:
         self.webapp_deploy_requests.append(source)
         if progress is not None:
             for message in (
-                "Preparing webapp release download",
-                "Downloading webapp release zip",
+                "Preparing webapp ZIP download",
+                "Downloading webapp ZIP",
                 "Extracting webapp files",
                 "Deploying webapp files",
             ):

@@ -62,7 +62,7 @@ class WebAppDeployer:
         source: WebAppSource,
         progress: Callable[[str], None] | None = None,
     ) -> WebAppDeployment:
-        self._host._report_progress(progress, "Preparing webapp release download")
+        self._host._report_progress(progress, "Preparing webapp ZIP download")
         app_root = Path(self._host.home()) / ".local" / "share" / "pi-kiosk" / "webapp"
         current_dir = app_root / "current"
         app_root.mkdir(parents=True, exist_ok=True)
@@ -71,11 +71,11 @@ class WebAppDeployer:
         with tempfile.TemporaryDirectory() as tmp:
             temp_root = Path(tmp)
             archive_path = temp_root / "webapp-release.zip"
-            self._host._report_progress(progress, "Downloading webapp release zip")
+            self._host._report_progress(progress, "Downloading webapp ZIP")
             self._host._download_file(
                 source.release_url,
                 archive_path,
-                description="webapp release zip",
+                description="webapp ZIP",
                 progress=progress,
             )
             self._host._report_progress(progress, "Extracting webapp files")
@@ -758,12 +758,12 @@ class LinuxHost:
             with zipfile.ZipFile(archive_path) as bundle:
                 members = bundle.infolist()
                 if not members:
-                    raise UserFacingError("Downloaded webapp release zip was empty.")
+                    raise UserFacingError("Downloaded webapp ZIP was empty.")
 
                 for member in members:
                     if _zip_info_is_symlink(member):
                         raise UserFacingError(
-                            "Webapp release zip contained a symbolic link, which is not supported."
+                            "Webapp ZIP contained a symbolic link, which is not supported."
                         )
 
                     relative = _safe_zip_member_path(member.filename)
@@ -779,9 +779,9 @@ class LinuxHost:
                     with bundle.open(member) as source_stream, destination.open("wb") as target_stream:
                         shutil.copyfileobj(source_stream, target_stream)
         except zipfile.BadZipFile as exc:
-            raise UserFacingError("Downloaded webapp release zip was not a valid zip archive.") from exc
+            raise UserFacingError("Downloaded webapp ZIP was not a valid zip archive.") from exc
         except (OSError, RuntimeError) as exc:
-            raise UserFacingError(f"Could not extract the webapp release zip: {exc}.") from exc
+            raise UserFacingError(f"Could not extract the webapp ZIP: {exc}.") from exc
 
     def _resolve_webapp_root(self, extracted_root: Path) -> Path:
         current_root = extracted_root
@@ -790,7 +790,7 @@ class LinuxHost:
                 entry for entry in current_root.iterdir() if not _ignore_webapp_bundle_entry(entry.name)
             ]
             if not entries:
-                raise UserFacingError("Downloaded webapp release zip was empty.")
+                raise UserFacingError("Downloaded webapp ZIP was empty.")
 
             if (current_root / "index.html").is_file():
                 return current_root
@@ -800,7 +800,7 @@ class LinuxHost:
                 continue
 
             raise UserFacingError(
-                "Webapp release zip did not contain index.html at the archive root. "
+                "Webapp ZIP did not contain index.html at the archive root. "
                 "Package the built webapp files directly in the zip and run the wizard again."
             )
 
@@ -949,14 +949,14 @@ def _read_device_tree_model() -> str | None:
 def _safe_zip_member_path(name: str) -> Path | None:
     path = PurePosixPath(name)
     if path.is_absolute():
-        raise UserFacingError("Webapp release zip contained an unsafe absolute path.")
+        raise UserFacingError("Webapp ZIP contained an unsafe absolute path.")
 
     parts: list[str] = []
     for part in path.parts:
         if part in {"", "."}:
             continue
         if part == "..":
-            raise UserFacingError("Webapp release zip contained an unsafe parent path.")
+            raise UserFacingError("Webapp ZIP contained an unsafe parent path.")
         parts.append(part)
 
     if not parts:

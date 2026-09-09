@@ -25,7 +25,11 @@ SCREEN_RELEASE_URL = (
     "https://github.com/Visivalab/etruscos_touch/releases/download/"
     "screen-1-de-latest/screen_1_de-dist.zip"
 )
-RELEASE_URL_PROMPT = "Webapp release zip URL"
+SCREEN_S3_URL = (
+    "https://visivalab-totems-releases.s3.eu-west-1.amazonaws.com/"
+    "webapps/screen_1_de/latest/screen_1_de-dist.zip"
+)
+RELEASE_URL_PROMPT = "Webapp ZIP URL"
 
 
 class AskWebAppKioskStepTests(unittest.TestCase):
@@ -75,6 +79,27 @@ class AskWebAppKioskStepTests(unittest.TestCase):
 
         self.assertEqual(source, WebAppSource(release_url=SCREEN_RELEASE_URL))
 
+    def test_accepts_public_s3_zip_url(self):
+        source = normalize_source(SCREEN_S3_URL)
+
+        self.assertEqual(source, WebAppSource(release_url=SCREEN_S3_URL))
+
+    def test_preserves_query_parameters_for_non_github_zip_urls(self):
+        source = normalize_source(f"{SCREEN_S3_URL}?versionId=example#download")
+
+        self.assertEqual(
+            source,
+            WebAppSource(release_url=f"{SCREEN_S3_URL}?versionId=example"),
+        )
+
+    def test_rejects_insecure_webapp_zip_urls(self):
+        with self.assertRaisesRegex(ValueError, "public HTTPS"):
+            normalize_source(SCREEN_S3_URL.replace("https://", "http://"))
+
+    def test_rejects_https_urls_that_do_not_point_to_a_zip(self):
+        with self.assertRaisesRegex(ValueError, "public HTTPS"):
+            normalize_source("https://example.com/webapps/screen_1_de/latest/")
+
     def test_retries_invalid_input_until_valid(self):
         class RetryUI(FakeUI):
             def __init__(self) -> None:
@@ -90,8 +115,8 @@ class AskWebAppKioskStepTests(unittest.TestCase):
         answer = WebAppKioskStep(prompt_for_next_action=False).ask(ui)
 
         self.assertEqual(answer.source, WebAppSource(release_url=DEMO_RELEASE_URL))
-        self.assertTrue(any("release zip URL" in message for message in ui.messages))
-        self.assertTrue(any("releases/latest/download" in message for message in ui.messages))
+        self.assertTrue(any("public HTTPS webapp ZIP URL" in message for message in ui.messages))
+        self.assertTrue(any("example-bucket.s3" in message for message in ui.messages))
 
 
 class ApplyWebAppKioskStepTests(unittest.TestCase):
@@ -128,8 +153,8 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertEqual(
             host.webapp_progress_messages,
             [
-                "Preparing webapp release download",
-                "Downloading webapp release zip",
+                "Preparing webapp ZIP download",
+                "Downloading webapp ZIP",
                 "Extracting webapp files",
                 "Deploying webapp files",
             ],
@@ -273,8 +298,8 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertEqual(
             host.webapp_progress_messages,
             [
-                "Preparing webapp release download",
-                "Downloading webapp release zip",
+                "Preparing webapp ZIP download",
+                "Downloading webapp ZIP",
                 "Extracting webapp files",
                 "Deploying webapp files",
             ],

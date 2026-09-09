@@ -54,13 +54,13 @@ class TerminalUITests(unittest.TestCase):
         stdout = io.StringIO()
         ui = TerminalUI(stdin=stdin, stdout=stdout)
 
-        text = ui.prompt("Webapp release zip URL")
+        text = ui.prompt("Webapp ZIP URL")
 
         self.assertEqual(
             text,
             "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip",
         )
-        self.assertIn("Webapp release zip URL: ", stdout.getvalue())
+        self.assertIn("Webapp ZIP URL: ", stdout.getvalue())
 
     def test_secret_reads_a_value(self):
         stdin = io.StringIO("secret-pass\n")
@@ -74,8 +74,8 @@ class TerminalUITests(unittest.TestCase):
 
     def test_progress_prints_a_loading_line(self):
         stdout = io.StringIO()
-        TerminalUI(stdin=io.StringIO(), stdout=stdout).progress("Downloading webapp release zip")
-        self.assertIn("[....] Downloading webapp release zip", stdout.getvalue())
+        TerminalUI(stdin=io.StringIO(), stdout=stdout).progress("Downloading webapp ZIP")
+        self.assertIn("[....] Downloading webapp ZIP", stdout.getvalue())
 
     def test_confirm_accepts_default_yes_on_empty_input(self):
         stdin = io.StringIO("\n")

@@ -22,7 +22,7 @@ from pi_kiosk.wizard_context import WizardContext
 DEMO_RELEASE_URL = (
     "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
 )
-RELEASE_URL_PROMPT = "Webapp release zip URL"
+RELEASE_URL_PROMPT = "Webapp ZIP URL"
 
 
 class WizardTests(unittest.TestCase):

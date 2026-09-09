@@ -4,7 +4,7 @@ import shlex
 from dataclasses import replace
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
@@ -32,11 +32,11 @@ SERVER_READY_RETRIES = 50
 SERVER_READY_DELAY_SECONDS = 0.2
 STARTUP_HEARTBEAT_RETRIES = 12
 STARTUP_HEARTBEAT_DELAY_SECONDS = 5
-RELEASE_URL_PROMPT = "Webapp release zip URL"
+RELEASE_URL_PROMPT = "Webapp ZIP URL"
 _GITHUB_HOSTS = {"github.com", "www.github.com"}
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
-_RELEASE_URL_EXAMPLE = (
-    "https://github.com/owner/repo/releases/latest/download/app-dist.zip"
+_WEBAPP_URL_EXAMPLE = (
+    "https://example-bucket.s3.eu-west-3.amazonaws.com/app/app-dist.zip"
 )
 
 
@@ -79,10 +79,22 @@ def normalize_source(value: str) -> WebAppSource:
         text = f"https://{text}"
 
     parsed = urlsplit(text)
-    if parsed.scheme != "https" or parsed.netloc.lower() not in _GITHUB_HOSTS:
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
         raise ValueError(_release_url_error())
 
     parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if parsed.hostname.lower() not in _GITHUB_HOSTS:
+        if not parts or not parts[-1].lower().endswith(".zip"):
+            raise ValueError(_release_url_error())
+        return WebAppSource(
+            release_url=urlunsplit((parsed.scheme, parsed.netloc, parsed.path, parsed.query, ""))
+        )
+
     if not _looks_like_release_download_path(parts):
         raise ValueError(_release_url_error())
 
@@ -103,7 +115,7 @@ def _looks_like_release_download_path(parts: list[str]) -> bool:
 
 
 def _release_url_error() -> str:
-    return f"Enter a public GitHub release zip URL, for example {_RELEASE_URL_EXAMPLE}."
+    return f"Enter a public HTTPS webapp ZIP URL, for example {_WEBAPP_URL_EXAMPLE}."
 
 
 def launcher_path(home: str) -> str:

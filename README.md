@@ -26,7 +26,7 @@ It asks these interactive questions:
 1. Screen rotation
 2. RustDesk unattended password
 3. What kind of kiosk to deploy
-4. GitHub release zip URL for a webapp kiosk, or Dropbox link for a video kiosk
+4. Public HTTPS ZIP URL for a webapp kiosk, or Dropbox link for a video kiosk
 5. Whether to register the totem now
 6. If you choose registration: totem name and optional description/location
 7. What to do next: launch now, reboot, or do nothing
@@ -51,8 +51,8 @@ with Imager, boot normally, run the command.
    - installs the latest official RustDesk `.deb`
    - sets the unattended-access password you provide
    - prints the generated RustDesk ID
-5. Webapp kiosk deployment from a public GitHub release zip:
-   - downloads the release asset zip
+5. Webapp kiosk deployment from a public HTTPS ZIP, such as an Amazon S3 object:
+   - downloads the webapp ZIP
    - deploys the extracted static app files
    - serves the static app locally with `python3 -m http.server`
    - launches Chromium in kiosk mode on graphical login
@@ -105,7 +105,7 @@ URL is inferred from `PI_KIOSK_REGISTER_TOTEM_URL` by replacing the final
 - It refuses to run on a non-Raspberry Pi. Safe to invoke by mistake.
 - It refuses to run without sudo.
 - It does not build frontend code on the Pi with npm/node.
-- It does not handle private GitHub release assets yet.
+- It does not authenticate downloads from private object storage.
 - It does not configure a custom RustDesk server.
 - It does not disable touch input devices; it only maps touch when needed.
 
