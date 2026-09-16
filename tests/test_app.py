@@ -19,10 +19,10 @@ from pi_kiosk.totem_registration import (
 )
 from pi_kiosk.wizard_context import WizardContext
 
-DEMO_RELEASE_URL = (
-    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
-)
-RELEASE_URL_PROMPT = "Webapp ZIP URL"
+S3_BASE_URL = "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
+DEMO_RELEASE_PATH = "demo-app/demo-app-dist.zip"
+DEMO_RELEASE_URL = f"{S3_BASE_URL}{DEMO_RELEASE_PATH}"
+RELEASE_URL_PROMPT = "S3 zip - example: screen_1_de/screen_1_de-dist.zip"
 
 
 class WizardTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class WizardTests(unittest.TestCase):
                 "Screen rotation": "clockwise",
                 "RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 REGISTER_TOTEM_PROMPT: "no",
                 NEXT_ACTION_PROMPT: "simulate",
             }
@@ -126,7 +126,7 @@ class WizardTests(unittest.TestCase):
                 "Screen rotation": "clockwise",
                 "RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 REGISTER_TOTEM_PROMPT: "no",
                 NEXT_ACTION_PROMPT: "close",
             }
@@ -154,7 +154,7 @@ class WizardTests(unittest.TestCase):
                 "Screen rotation": "none",
                 "RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 REGISTER_TOTEM_PROMPT: "no",
             }
         )
@@ -172,7 +172,7 @@ class WizardTests(unittest.TestCase):
                 "Screen rotation": "none",
                 "RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 REGISTER_TOTEM_PROMPT: "yes",
                 "Totem name": "Hall Screen",
                 "Totem description": "",
@@ -244,7 +244,7 @@ class RegisterTotemStepTests(unittest.TestCase):
                 FakeUI(
                     answers={
                         TYPE_OF_PROJECT_PROMPT: "webapp",
-                        RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                        RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                     }
                 )
             ),
@@ -266,7 +266,7 @@ class FinalActionStepTests(unittest.TestCase):
                 FakeUI(
                     answers={
                         TYPE_OF_PROJECT_PROMPT: "webapp",
-                        RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                        RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                     }
                 )
             ),

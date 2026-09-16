@@ -18,93 +18,80 @@ from pi_kiosk.steps.webapp_kiosk import (
 )
 from pi_kiosk.wizard_context import WizardContext
 
-DEMO_RELEASE_URL = (
-    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
-)
-SCREEN_RELEASE_URL = (
-    "https://github.com/Visivalab/etruscos_touch/releases/download/"
-    "screen-1-de-latest/screen_1_de-dist.zip"
-)
-SCREEN_S3_URL = (
-    "https://visivalab-totems-releases.s3.eu-west-1.amazonaws.com/"
-    "webapps/screen_1_de/latest/screen_1_de-dist.zip"
-)
-RELEASE_URL_PROMPT = "Webapp ZIP URL"
+S3_BASE_URL = "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
+DEMO_RELEASE_PATH = "demo-app/demo-app-dist.zip"
+DEMO_RELEASE_URL = f"{S3_BASE_URL}{DEMO_RELEASE_PATH}"
+SCREEN_RELEASE_PATH = "screen_1_de/screen_1_de-dist.zip"
+SCREEN_RELEASE_URL = f"{S3_BASE_URL}{SCREEN_RELEASE_PATH}"
+RELEASE_URL_PROMPT = "S3 zip - example: screen_1_de/screen_1_de-dist.zip"
 
 
 class AskWebAppKioskStepTests(unittest.TestCase):
+    def test_asks_for_s3_zip_path_and_builds_fixed_release_url(self):
+        prompt = "S3 zip - example: screen_1_de/screen_1_de-dist.zip"
+        ui = FakeUI(answers={prompt: "screen_1_de/screen_1_de-dist.zip"})
+
+        answer = WebAppKioskStep(prompt_for_next_action=False).ask(ui)
+
+        self.assertEqual(ui.prompts, [prompt])
+        self.assertEqual(
+            answer.source,
+            WebAppSource(
+                release_url=(
+                    "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
+                    "screen_1_de/screen_1_de-dist.zip"
+                )
+            ),
+        )
+
     def test_close_choice_matches_server_only_behavior(self):
         close_choice = next(choice for choice in NEXT_ACTION_CHOICES if choice.id == "close")
 
         self.assertIn("app server", close_choice.label.lower())
         self.assertIn("8080", close_choice.label)
 
-    def test_accepts_github_release_zip_url(self):
-        ui = FakeUI(answers={RELEASE_URL_PROMPT: DEMO_RELEASE_URL})
+    def test_accepts_s3_zip_path(self):
+        ui = FakeUI(answers={RELEASE_URL_PROMPT: DEMO_RELEASE_PATH})
 
         answer = WebAppKioskStep(prompt_for_next_action=False).ask(ui)
 
         self.assertEqual(answer.source, WebAppSource(release_url=DEMO_RELEASE_URL))
         self.assertIsNone(answer.next_action)
 
-    def test_normalizes_release_url_without_scheme(self):
-        source = normalize_source(
-            "github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
-        )
+    def test_normalizes_s3_zip_path_with_surrounding_whitespace(self):
+        source = normalize_source(f"  {DEMO_RELEASE_PATH}  ")
 
         self.assertEqual(source, WebAppSource(release_url=DEMO_RELEASE_URL))
 
-    def test_normalizes_release_url_and_ignores_query_and_fragment(self):
-        source = normalize_source(f"{DEMO_RELEASE_URL}?download=1#asset")
-
-        self.assertEqual(source, WebAppSource(release_url=DEMO_RELEASE_URL))
-
-    def test_normalizes_latest_release_download_url(self):
-        source = normalize_source(
-            "https://github.com/Visivalab/demo-app/releases/latest/download/demo-app-dist.zip"
-        )
+    def test_accepts_nested_s3_zip_path(self):
+        source = normalize_source("webapps/screen_1_de/latest/screen_1_de-dist.zip")
 
         self.assertEqual(
             source,
             WebAppSource(
-                release_url=(
-                    "https://github.com/Visivalab/demo-app/releases/latest/download/"
-                    "demo-app-dist.zip"
-                )
+                release_url=f"{S3_BASE_URL}webapps/screen_1_de/latest/screen_1_de-dist.zip"
             ),
         )
 
-    def test_accepts_release_url_for_nested_project_builds(self):
-        source = normalize_source(SCREEN_RELEASE_URL)
-
-        self.assertEqual(source, WebAppSource(release_url=SCREEN_RELEASE_URL))
-
-    def test_accepts_public_s3_zip_url(self):
-        source = normalize_source(SCREEN_S3_URL)
-
-        self.assertEqual(source, WebAppSource(release_url=SCREEN_S3_URL))
-
-    def test_preserves_query_parameters_for_non_github_zip_urls(self):
-        source = normalize_source(f"{SCREEN_S3_URL}?versionId=example#download")
-
-        self.assertEqual(
-            source,
-            WebAppSource(release_url=f"{SCREEN_S3_URL}?versionId=example"),
-        )
-
-    def test_rejects_insecure_webapp_zip_urls(self):
-        with self.assertRaisesRegex(ValueError, "public HTTPS"):
-            normalize_source(SCREEN_S3_URL.replace("https://", "http://"))
-
-    def test_rejects_https_urls_that_do_not_point_to_a_zip(self):
-        with self.assertRaisesRegex(ValueError, "public HTTPS"):
-            normalize_source("https://example.com/webapps/screen_1_de/latest/")
+    def test_rejects_full_urls_and_invalid_paths(self):
+        for value in (
+            DEMO_RELEASE_URL,
+            "http://example.com/app.zip",
+            "screen_1_de/../other.zip",
+            "/screen_1_de/app.zip",
+            "screen_1_de//app.zip",
+            "screen_1_de/app.zip?version=1",
+            "screen_1_de/",
+            "app.zip",
+        ):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "S3 ZIP path"):
+                normalize_source(value)
 
     def test_retries_invalid_input_until_valid(self):
         class RetryUI(FakeUI):
             def __init__(self) -> None:
                 super().__init__()
-                self.values = iter(["demo-app", DEMO_RELEASE_URL])
+                self.values = iter(["demo-app", DEMO_RELEASE_PATH])
 
             def prompt(self, prompt: str) -> str:
                 self.prompts.append(prompt)
@@ -115,8 +102,8 @@ class AskWebAppKioskStepTests(unittest.TestCase):
         answer = WebAppKioskStep(prompt_for_next_action=False).ask(ui)
 
         self.assertEqual(answer.source, WebAppSource(release_url=DEMO_RELEASE_URL))
-        self.assertTrue(any("public HTTPS webapp ZIP URL" in message for message in ui.messages))
-        self.assertTrue(any("example-bucket.s3" in message for message in ui.messages))
+        self.assertTrue(any("S3 ZIP path" in message for message in ui.messages))
+        self.assertTrue(any(SCREEN_RELEASE_PATH in message for message in ui.messages))
 
 
 class ApplyWebAppKioskStepTests(unittest.TestCase):
@@ -125,7 +112,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         request = WebAppKioskStep().ask(
             FakeUI(
                 answers={
-                    RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                    RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                     NEXT_ACTION_PROMPT: "simulate",
                 }
             )
@@ -138,7 +125,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
                 host=host,
                 ui=FakeUI(
                     answers={
-                        RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                        RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                         NEXT_ACTION_PROMPT: "simulate",
                     }
                 ),
@@ -164,7 +151,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         host = FakeHost()
         ui = FakeUI(
             answers={
-                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 NEXT_ACTION_PROMPT: "simulate",
             }
         )
@@ -188,7 +175,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         host = FakeHost()
         ui = FakeUI(
             answers={
-                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 NEXT_ACTION_PROMPT: "reboot",
             }
         )
@@ -208,7 +195,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         host = FakeHost()
         ui = FakeUI(
             answers={
-                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 NEXT_ACTION_PROMPT: "close",
             }
         )
@@ -232,7 +219,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             )
         )
         step = WebAppKioskStep()
-        ui = FakeUI(answers={RELEASE_URL_PROMPT: DEMO_RELEASE_URL, NEXT_ACTION_PROMPT: "close"})
+        ui = FakeUI(answers={RELEASE_URL_PROMPT: DEMO_RELEASE_PATH, NEXT_ACTION_PROMPT: "close"})
         step.ask(ui)
 
         report = step.apply(
@@ -314,7 +301,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         )
 
         step = WebAppKioskStep()
-        step.ask(FakeUI(answers={RELEASE_URL_PROMPT: DEMO_RELEASE_URL, NEXT_ACTION_PROMPT: "close"}))
+        step.ask(FakeUI(answers={RELEASE_URL_PROMPT: DEMO_RELEASE_PATH, NEXT_ACTION_PROMPT: "close"}))
         report = step.apply(host, WebAppSource(release_url=DEMO_RELEASE_URL))
 
         self.assertIn(DEMO_RELEASE_URL, report)

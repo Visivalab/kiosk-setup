@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import re
 import shlex
 from dataclasses import replace
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from urllib.parse import urlsplit, urlunsplit
 
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
@@ -32,12 +32,10 @@ SERVER_READY_RETRIES = 50
 SERVER_READY_DELAY_SECONDS = 0.2
 STARTUP_HEARTBEAT_RETRIES = 12
 STARTUP_HEARTBEAT_DELAY_SECONDS = 5
-RELEASE_URL_PROMPT = "Webapp ZIP URL"
-_GITHUB_HOSTS = {"github.com", "www.github.com"}
+RELEASE_URL_PROMPT = "S3 zip - example: screen_1_de/screen_1_de-dist.zip"
+S3_RELEASE_BASE_URL = "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
-_WEBAPP_URL_EXAMPLE = (
-    "https://example-bucket.s3.eu-west-3.amazonaws.com/app/app-dist.zip"
-)
+_WEBAPP_PATH_EXAMPLE = "screen_1_de/screen_1_de-dist.zip"
 
 
 @dataclass(frozen=True)
@@ -71,51 +69,24 @@ def _source_label(source: WebAppSource) -> str:
 
 
 def normalize_source(value: str) -> WebAppSource:
-    text = value.strip()
-    if not text:
-        raise ValueError(_release_url_error())
-
-    if "://" not in text and text.lower().startswith(("github.com/", "www.github.com/")):
-        text = f"https://{text}"
-
-    parsed = urlsplit(text)
+    path = value.strip()
+    parts = path.split("/")
     if (
-        parsed.scheme != "https"
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
+        len(parts) < 2
+        or any(
+            part in ("", ".", "..") or not re.fullmatch(r"[A-Za-z0-9._-]+", part)
+            for part in parts
+        )
+        or not parts[-1].lower().endswith(".zip")
+        or parts[-1].lower() == ".zip"
     ):
         raise ValueError(_release_url_error())
 
-    parts = [part for part in parsed.path.strip("/").split("/") if part]
-    if parsed.hostname.lower() not in _GITHUB_HOSTS:
-        if not parts or not parts[-1].lower().endswith(".zip"):
-            raise ValueError(_release_url_error())
-        return WebAppSource(
-            release_url=urlunsplit((parsed.scheme, parsed.netloc, parsed.path, parsed.query, ""))
-        )
-
-    if not _looks_like_release_download_path(parts):
-        raise ValueError(_release_url_error())
-
-    asset_name = parts[5]
-    if not asset_name.lower().endswith(".zip"):
-        raise ValueError(_release_url_error())
-
-    normalized_path = "/".join(parts)
-    return WebAppSource(release_url=f"https://github.com/{normalized_path}")
-
-
-def _looks_like_release_download_path(parts: list[str]) -> bool:
-    if len(parts) != 6:
-        return False
-    if parts[2:4] == ["releases", "download"]:
-        return True
-    return parts[2:5] == ["releases", "latest", "download"]
+    return WebAppSource(release_url=f"{S3_RELEASE_BASE_URL}{path}")
 
 
 def _release_url_error() -> str:
-    return f"Enter a public HTTPS webapp ZIP URL, for example {_WEBAPP_URL_EXAMPLE}."
+    return f"Enter an S3 ZIP path, for example {_WEBAPP_PATH_EXAMPLE}."
 
 
 def launcher_path(home: str) -> str:

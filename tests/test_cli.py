@@ -18,10 +18,10 @@ from pi_kiosk.totem_registration import (
     TOTEM_TYPE_PROMPT,
 )
 
-DEMO_RELEASE_URL = (
-    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
-)
-RELEASE_URL_PROMPT = "Webapp ZIP URL"
+S3_BASE_URL = "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
+DEMO_RELEASE_PATH = "demo-app/demo-app-dist.zip"
+DEMO_RELEASE_URL = f"{S3_BASE_URL}{DEMO_RELEASE_PATH}"
+RELEASE_URL_PROMPT = "S3 zip - example: screen_1_de/screen_1_de-dist.zip"
 
 
 class RootGuardTests(unittest.TestCase):
@@ -51,7 +51,7 @@ class CliTests(unittest.TestCase):
                     "Screen rotation": "none",
                     "RustDesk password": "secret-pass",
                     TYPE_OF_PROJECT_PROMPT: "webapp",
-                    RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                    RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                     REGISTER_TOTEM_PROMPT: "no",
                     NEXT_ACTION_PROMPT: "close",
                 }

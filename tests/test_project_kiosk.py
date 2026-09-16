@@ -8,18 +8,18 @@ from pi_kiosk.steps.project_kiosk import NEXT_ACTION_PROMPT, ProjectKioskStep, T
 from pi_kiosk.steps.video_kiosk import VIDEO_NEXT_ACTION_PROMPT
 from pi_kiosk.wizard_context import WizardContext
 
-DEMO_RELEASE_URL = (
-    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
-)
-RELEASE_URL_PROMPT = "Webapp ZIP URL"
+S3_BASE_URL = "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
+DEMO_RELEASE_PATH = "demo-app/demo-app-dist.zip"
+DEMO_RELEASE_URL = f"{S3_BASE_URL}{DEMO_RELEASE_PATH}"
+RELEASE_URL_PROMPT = "S3 zip - example: screen_1_de/screen_1_de-dist.zip"
 
 
 class AskProjectKioskStepTests(unittest.TestCase):
-    def test_asks_for_release_zip_url_when_webapp_is_selected(self):
+    def test_asks_for_s3_zip_path_when_webapp_is_selected(self):
         ui = FakeUI(
             answers={
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
             }
         )
 
@@ -56,7 +56,7 @@ class ApplyProjectKioskStepTests(unittest.TestCase):
         ui = FakeUI(
             answers={
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
+                RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 NEXT_ACTION_PROMPT: "close",
             }
         )

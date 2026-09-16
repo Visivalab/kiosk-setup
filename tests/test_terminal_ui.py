@@ -48,19 +48,14 @@ class TerminalUITests(unittest.TestCase):
         self.assertIn("Done: example", stdout.getvalue())
 
     def test_prompt_reads_a_free_text_value(self):
-        stdin = io.StringIO(
-            "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip\n"
-        )
+        stdin = io.StringIO("screen_1_de/screen_1_de-dist.zip\n")
         stdout = io.StringIO()
         ui = TerminalUI(stdin=stdin, stdout=stdout)
 
-        text = ui.prompt("Webapp ZIP URL")
+        text = ui.prompt("S3 zip - example: screen_1_de/screen_1_de-dist.zip")
 
-        self.assertEqual(
-            text,
-            "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip",
-        )
-        self.assertIn("Webapp ZIP URL: ", stdout.getvalue())
+        self.assertEqual(text, "screen_1_de/screen_1_de-dist.zip")
+        self.assertIn("S3 zip - example: screen_1_de/screen_1_de-dist.zip: ", stdout.getvalue())
 
     def test_secret_reads_a_value(self):
         stdin = io.StringIO("secret-pass\n")

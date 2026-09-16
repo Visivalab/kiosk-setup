@@ -26,7 +26,8 @@ It asks these interactive questions:
 1. Screen rotation
 2. RustDesk unattended password
 3. What kind of kiosk to deploy
-4. Public HTTPS ZIP URL for a webapp kiosk, or Dropbox link for a video kiosk
+4. S3 ZIP path for a webapp kiosk (for example
+   `screen_1_de/screen_1_de-dist.zip`), or Dropbox link for a video kiosk
 5. Whether to register the totem now
 6. If you choose registration: totem name and optional description/location
 7. What to do next: launch now, reboot, or do nothing
@@ -51,7 +52,9 @@ with Imager, boot normally, run the command.
    - installs the latest official RustDesk `.deb`
    - sets the unattended-access password you provide
    - prints the generated RustDesk ID
-5. Webapp kiosk deployment from a public HTTPS ZIP, such as an Amazon S3 object:
+5. Webapp kiosk deployment from the ZIP at
+   `https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/` plus the
+   path you enter:
    - downloads the webapp ZIP
    - deploys the extracted static app files
    - serves the static app locally with `python3 -m http.server`
