@@ -12,7 +12,8 @@ from pi_kiosk.host import (
 )
 
 DEMO_RELEASE_URL = (
-    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
+    "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
+    "demo-app/demo-app-dist.zip"
 )
 
 

@@ -290,14 +290,15 @@ rebooting starts it again.
 
 ## Step 7A: webapp kiosk
 
-### Which webapp URLs are accepted?
+### Which webapp ZIP paths are accepted?
 
-The wizard accepts public HTTPS URLs whose path ends in `.zip`, including Amazon
-S3 and CloudFront URLs. Existing public GitHub Release ZIP URLs remain
-compatible.
+The wizard asks for an S3 ZIP path, such as
+`screen_1_de/screen_1_de-dist.zip`. It adds the fixed base URL
+`https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/` before
+downloading. Enter a folder path ending in a `.zip` filename, not a full URL.
 
-The Pi does not receive AWS credentials. An S3 or CloudFront object therefore
-has to be downloadable using an unauthenticated HTTPS request.
+The Pi does not receive AWS credentials, so the S3 object must be downloadable
+using an unauthenticated HTTPS request.
 
 ### Does the Pi build the webapp?
 
@@ -691,13 +692,14 @@ For a video kiosk:
 
 No. The Pi downloads the ZIP while the wizard is running. Replacing the object
 at the same S3 URL does not push the new files to existing Pis. Run the wizard
-again with that URL to deploy the new build.
+again with the same ZIP path to deploy the new build.
 
 ### Does the Pi retain the original ZIP URL?
 
-The URL is used during the wizard and appears in its completion report, but no
-dedicated persistent “current source URL” configuration file is installed. The
-deployed static files remain in the `current` directory.
+The URL assembled from the fixed S3 base and entered path appears in the
+completion report, but no dedicated persistent “current source URL”
+configuration file is installed. The deployed static files remain in the
+`current` directory.
 
 ### Does a webapp need internet access after deployment?
 

@@ -34,11 +34,12 @@ TOTEM_CONFIG = TotemRegistrationConfig(
     token="totem-secret",
 )
 DEMO_RELEASE_URL = (
-    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
+    "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
+    "demo-app/demo-app-dist.zip"
 )
 SCREEN_RELEASE_URL = (
-    "https://github.com/Visivalab/etruscos_touch/releases/download/"
-    "screen-1-de-latest/screen_1_de-dist.zip"
+    "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
+    "screen_1_de/screen_1_de-dist.zip"
 )
 
 
