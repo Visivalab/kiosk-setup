@@ -137,6 +137,7 @@ def _webapp_lines(context: WizardContext) -> list[str]:
         lines.append(_checked(f"Configured the local server to serve the app on {deployment.server_url}"))
     if deployment.chromium_kiosk_configured:
         lines.append(_checked("Configured Chromium kiosk mode for the deployed app"))
+        lines.append(_checked("Disabled right-click and text selection in the deployed webapp"))
     if deployment.cursor_hide_configured:
         lines.append(_checked("Configured automatic mouse hide after idle"))
     if deployment.log_tail_command:

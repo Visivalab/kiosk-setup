@@ -105,6 +105,10 @@ class RenderSetupSummaryTests(unittest.TestCase):
             report,
         )
         self.assertIn("- [x] Configured automatic mouse hide after idle", report)
+        self.assertIn(
+            "- [x] Disabled right-click and text selection in the deployed webapp",
+            report,
+        )
         self.assertIn("- [x] Totem registration was skipped", report)
 
     def test_does_not_report_skipped_totem_when_register_step_never_ran(self):
