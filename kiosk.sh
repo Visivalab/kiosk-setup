@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Pi entry point. From a checkout: sudo ./kiosk.sh
 # From GitHub (repo must be public):
-#   curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-config/master/kiosk.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-setup/master/kiosk.sh | sudo bash
 #
 # The body lives in main() so a piped invocation can read the whole script
 # before stdin is reattached to /dev/tty for the rotation prompt.
 set -euo pipefail
 
-ARCHIVE_URL="${PI_KIOSK_ARCHIVE_URL:-https://github.com/Visivalab/kiosk-config/archive/refs/heads/master.tar.gz}"
+ARCHIVE_URL="${PI_KIOSK_ARCHIVE_URL:-https://github.com/Visivalab/kiosk-setup/archive/refs/heads/master.tar.gz}"
 
 script_dir() {
   local src="${BASH_SOURCE[0]:-}"

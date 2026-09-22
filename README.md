@@ -1,4 +1,4 @@
-# kiosk-config
+# kiosk-setup
 
 Configuration tools for kiosk machines.
 
@@ -6,7 +6,7 @@ The Pi subproject is an interactive first-boot wizard for Raspberry Pi OS (Bookw
 
 The repo must be **public**. Then, on the Pi:
 
-    curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-config/master/kiosk.sh | sudo bash
+    curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-setup/master/kiosk.sh | sudo bash
 
 That downloads only `kiosk.sh`. The script then fetches the rest of the tree
 and gives the wizard access to `/dev/tty` so the rotation prompt still works.
@@ -21,7 +21,7 @@ To run the standalone totem registration flow later from a checkout:
 
 Or directly from GitHub on the Pi:
 
-    curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-config/master/kiosk.sh | sudo bash -s -- register-totem
+    curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-setup/master/kiosk.sh | sudo bash -s -- register-totem
 
 It asks these interactive questions:
 
@@ -75,7 +75,7 @@ you want to register the device in your dashboard/backend:
 
 If you are not inside a checkout on the Pi, use the pipeable form instead:
 
-    curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-config/master/kiosk.sh | sudo bash -s -- register-totem
+    curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-setup/master/kiosk.sh | sudo bash -s -- register-totem
 
 That command:
 
@@ -95,7 +95,7 @@ The hourly reporter sends:
 - `kiosk_running`: `true` when `labwc` is running for the desktop user
 - `webapp_running`: `true` when `127.0.0.1:8080` is answering
 
-Configure the endpoint and token in [pi/src/pi_kiosk/totem_registration.py](/mnt/c/Users/Nitropc/orca/kiosk-config/pi/src/pi_kiosk/totem_registration.py)
+Configure the endpoint and token in [pi/src/pi_kiosk/totem_registration.py](pi/src/pi_kiosk/totem_registration.py)
 or override them with:
 
 - `PI_KIOSK_REGISTER_TOTEM_URL`

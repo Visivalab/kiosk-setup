@@ -5,7 +5,7 @@ Guidance for coding agents working in this repository.
 ## Scope and working copy
 
 - Canonical checkout: `/home/gerard/projects/pi-kiosk-setup`
-- Public GitHub remote: `https://github.com/Visivalab/kiosk-config` (must be public for the curl one-liner). Do not push unless asked.
+- Public GitHub remote: `https://github.com/Visivalab/kiosk-setup` (must be public for the curl one-liner). Do not push unless asked.
 - This tool is meant to run on **other** Raspberry Pis, never on the VPS that hosts this checkout.
 - Do not run `sudo ./kiosk.sh` or `python3 -m pi_kiosk` against a real host unless the user explicitly wants a live Pi configured. Tests use an in-memory fake.
 

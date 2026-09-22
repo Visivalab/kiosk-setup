@@ -621,7 +621,7 @@ sudo env PYTHONPATH=pi/src python3 -m pi_kiosk register-totem
 Or using the pipeable installer command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-config/master/kiosk.sh \
+curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-setup/master/kiosk.sh \
   | sudo bash -s -- register-totem
 ```
 
