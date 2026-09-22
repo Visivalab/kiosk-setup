@@ -46,7 +46,7 @@ class KioskShTests(unittest.TestCase):
         self.bin = self.root / "bin"
         self.bin.mkdir()
         self.out = self.root / "out.txt"
-        self.tarball = self.root / "pi-kiosk.tar.gz"
+        self.tarball = self.root / "kiosk-config.tar.gz"
         self._write_archive(self.tarball)
         self._write_fake_python()
         self._write_fake_sudo()
@@ -56,13 +56,13 @@ class KioskShTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def _write_archive(self, dest: Path) -> None:
-        tree = self.root / "archive-tree" / "pi-kiosk-master" / "src" / "pi_kiosk"
+        tree = self.root / "archive-tree" / "kiosk-config-master" / "src" / "pi_kiosk"
         tree.mkdir(parents=True)
         (tree / "__init__.py").write_text("", encoding="utf-8")
         with tarfile.open(dest, "w:gz") as bundle:
             bundle.add(
                 tree.parents[1],
-                arcname="pi-kiosk-master",
+                arcname="kiosk-config-master",
             )
 
     def _write_fake_python(self) -> None:
@@ -204,7 +204,7 @@ class KioskShTests(unittest.TestCase):
             "local archive path should be copied, not fetched with curl",
         )
         pythonpath = self.out.read_text(encoding="utf-8").splitlines()[0]
-        self.assertIn("pi-kiosk-master", pythonpath.replace("\\", "/"))
+        self.assertIn("kiosk-config-master", pythonpath.replace("\\", "/"))
         self.assertTrue(pythonpath.replace("\\", "/").endswith("/src"), pythonpath)
 
     def test_script_body_is_wrapped_so_stdin_can_be_the_terminal(self):
