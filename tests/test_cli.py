@@ -163,7 +163,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(host.connection_details_requests, [None, None])
         self.assertEqual(len(host.totem_status_reporter_installs), 1)
 
-    def test_register_totem_command_installs_hourly_status_reporter(self):
+    def test_register_totem_command_installs_status_reporter(self):
         host = FakeHost(
             machine_name="minipc-07",
             user="kiosk",
@@ -197,7 +197,7 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         self.assertEqual(stderr.getvalue(), "")
-        self.assertIn("hourly status reporter installed", stdout.getvalue().lower())
+        self.assertIn("status reporter installed", stdout.getvalue().lower())
         self.assertEqual(
             host.totem_status_reporter_installs,
             [
@@ -220,7 +220,7 @@ class CliTests(unittest.TestCase):
             ) -> str | None:
                 super().install_totem_status_reporter(config)
                 return (
-                    "Hourly status reporter was installed, but the first status run failed. "
+                    "Status reporter was installed, but the first status run failed. "
                     "The timer remains enabled."
                 )
 

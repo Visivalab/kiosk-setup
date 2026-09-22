@@ -86,9 +86,9 @@ That command:
 - asks for the totem location (optional)
 - reuses the RustDesk ID and unattended password already configured on the Pi, when available
 - sends a `POST` to your configured registration endpoint
-- installs an hourly systemd timer that reports raw runtime facts to the backend
+- installs a 5-minute systemd timer that reports raw runtime facts to the backend
 
-The hourly reporter sends:
+The status reporter sends:
 
 - `totem_type`: `webapp` or `video`
 - `machineName`: the current system hostname at the moment the heartbeat is sent
@@ -101,7 +101,7 @@ or override them with:
 - `PI_KIOSK_REGISTER_TOTEM_URL`
 - `PI_KIOSK_REGISTER_TOTEM_TOKEN`
 
-The hourly status reporter reuses `PI_KIOSK_REGISTER_TOTEM_TOKEN`. Its status
+The status reporter reuses `PI_KIOSK_REGISTER_TOTEM_TOKEN`. Its status
 URL is inferred from `PI_KIOSK_REGISTER_TOTEM_URL` by replacing the final
 `register-totem` path segment with `totem-status`.
 

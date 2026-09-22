@@ -534,7 +534,7 @@ PI_KIOSK_REGISTER_TOTEM_URL
 PI_KIOSK_REGISTER_TOTEM_TOKEN
 ```
 
-The resolved status endpoint and token are persisted for the hourly reporter in:
+The resolved status endpoint and token are persisted for the status reporter in:
 
 ```text
 /etc/pi-kiosk/totem-status.json
@@ -577,7 +577,7 @@ Registration starts the service once immediately. The enabled systemd timer
 then runs it:
 
 - Five minutes after boot.
-- Every hour after its previous activation.
+- Every 5 minutes after its previous activation.
 - After a missed scheduled run when the machine comes back, because the timer is
   persistent.
 
@@ -599,7 +599,7 @@ started.
 
 Yes. After its local server becomes ready, the webapp launcher runs the same
 status reporter in the background. It retries up to 12 times with five seconds
-between attempts. This is independent of the hourly systemd timer.
+between attempts. This is independent of the 5-minute systemd timer.
 
 ### How can I inspect the status timer and service?
 

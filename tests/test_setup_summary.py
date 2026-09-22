@@ -247,6 +247,6 @@ class RenderSetupSummaryTests(unittest.TestCase):
         )
         self.assertIn("- [x] Configured mpv for fullscreen looping playback", report)
         self.assertIn(
-            '- [x] Registered totem "Hall Screen" for machine pi-kiosk-01. Hourly status reporter installed.',
+            '- [x] Registered totem "Hall Screen" for machine pi-kiosk-01. Status reporter installed.',
             report,
         )

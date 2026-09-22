@@ -162,7 +162,7 @@ def service_unit() -> str:
     return "\n".join(
         [
             "[Unit]",
-            "Description=pi-kiosk hourly totem status reporter",
+            "Description=pi-kiosk totem status reporter",
             "Wants=network-online.target",
             "After=network-online.target",
             "",
@@ -181,11 +181,11 @@ def timer_unit() -> str:
     return "\n".join(
         [
             "[Unit]",
-            "Description=Run pi-kiosk totem status reporter every hour",
+            "Description=Run pi-kiosk totem status reporter every 5 minutes",
             "",
             "[Timer]",
             "OnBootSec=5min",
-            "OnUnitActiveSec=1h",
+            "OnUnitActiveSec=5min",
             "Persistent=true",
             "Unit=pi-kiosk-totem-status.service",
             "",

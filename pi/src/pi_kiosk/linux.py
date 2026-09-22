@@ -374,7 +374,7 @@ class TotemStatusReporterInstaller:
         result = self._host.run(["systemctl", "start", service_path.name], check=False)
         if result.returncode != 0:
             return (
-                "Hourly status reporter was installed, but the first status run failed. "
+                "Status reporter was installed, but the first status run failed. "
                 f"The timer remains enabled. Check `systemctl status {service_path.name}` "
                 f"and `journalctl -u {service_path.name} -n 50 --no-pager`."
             )

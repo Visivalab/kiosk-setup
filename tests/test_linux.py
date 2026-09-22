@@ -994,7 +994,7 @@ class LinuxHostTests(unittest.TestCase):
                                     service.read_text(encoding="utf-8"),
                                 )
                                 self.assertIn(
-                                    "OnUnitActiveSec=1h",
+                                    "OnUnitActiveSec=5min",
                                     timer.read_text(encoding="utf-8"),
                                 )
                                 run.assert_has_calls(

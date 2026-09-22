@@ -158,14 +158,14 @@ class TotemRegistrar:
                 )
             return TotemRegistrationResult(
                 machine_name=machine_name,
-                detail="Hourly status reporter installed.",
+                detail="Status reporter installed.",
                 report=(
                     f"Done: totem registered for machine {machine_name}. "
-                    "Hourly status reporter installed."
+                    "Status reporter installed."
                 ),
             )
         detail = (
-            "Hourly status reporter was not installed because no status endpoint is configured."
+            "Status reporter was not installed because no status endpoint is configured."
         )
         return TotemRegistrationResult(
             machine_name=machine_name,
