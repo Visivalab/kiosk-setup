@@ -52,6 +52,28 @@ RUSTDESK_UNATTENDED_OPTIONS = (
     ("verification-method", "use-permanent-password"),
 )
 
+_WEBAPP_LOCKDOWN = """\
+<style id="pi-kiosk-lockdown">
+  * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
+</style>
+<script>
+  window.addEventListener("contextmenu", event => event.preventDefault(), true);
+</script>
+"""
+
+
+def _lock_down_webapp(app_root: Path) -> None:
+    for path in app_root.rglob("*.html"):
+        html = path.read_text(encoding="utf-8")
+        if 'id="pi-kiosk-lockdown"' in html:
+            continue
+        head = html.lower().find("<head")
+        insertion = html.find(">", head) + 1 if head >= 0 else 0
+        path.write_text(
+            f"{html[:insertion]}\n{_WEBAPP_LOCKDOWN}{html[insertion:]}",
+            encoding="utf-8",
+        )
+
 
 class WebAppDeployer:
     def __init__(self, host: LinuxHost) -> None:
@@ -89,6 +111,7 @@ class WebAppDeployer:
             stage_dir.mkdir(parents=True, exist_ok=True)
             self._host._report_progress(progress, "Deploying webapp files")
             self._host._copy_directory_contents(source_root, stage_dir)
+            _lock_down_webapp(stage_dir)
             if current_dir.exists():
                 shutil.rmtree(current_dir)
             stage_dir.replace(current_dir)

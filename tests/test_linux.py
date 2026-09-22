@@ -10,7 +10,7 @@ from unittest import mock
 from urllib import error
 
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.host import TotemConnectionDetails, TotemStatusReporterConfig, VideoSource
+from pi_kiosk.host import TotemConnectionDetails, TotemStatusReporterConfig, VideoSource, WebAppSource
 from pi_kiosk.linux import (
     LinuxHost,
     NeedSudoUser,
@@ -206,6 +206,31 @@ class LinuxHostTests(unittest.TestCase):
             self.assertTrue(host.rustdesk_installed())
         with mock.patch("shutil.which", return_value=None):
             self.assertFalse(host.rustdesk_installed())
+
+    def test_webapp_deployment_disables_context_menu_and_text_selection(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home" / "pi"
+            archive = root / "webapp.zip"
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("index.html", "<html><head></head><body>App</body></html>")
+
+            def download(_url, destination, **_kwargs):
+                destination.write_bytes(archive.read_bytes())
+
+            with mock.patch.object(host, "home", return_value=str(home)):
+                with mock.patch.object(host, "_download_file", side_effect=download):
+                    with mock.patch.object(host, "_own_within_home"):
+                        with mock.patch.object(host, "_own_tree"):
+                            deployment = host.deploy_webapp(WebAppSource("https://example/app.zip"))
+
+            html = Path(deployment.app_dir, "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("user-select: none", html)
+        self.assertIn('addEventListener("contextmenu"', html)
+        self.assertIn("preventDefault()", html)
 
     def test_resolve_webapp_root_uses_single_wrapping_directory(self):
         host = LinuxHost()
