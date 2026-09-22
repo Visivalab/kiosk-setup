@@ -615,7 +615,7 @@ journalctl -u pi-kiosk-totem-status.service -n 50 --no-pager
 Yes, from a checkout:
 
 ```bash
-sudo env PYTHONPATH=src python3 -m pi_kiosk register-totem
+sudo env PYTHONPATH=pi/src python3 -m pi_kiosk register-totem
 ```
 
 Or using the pipeable installer command:

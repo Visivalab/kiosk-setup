@@ -1,6 +1,8 @@
-# pi-kiosk-setup
+# kiosk-config
 
-Interactive first-boot wizard for Raspberry Pi OS (Bookworm / Trixie, labwc).
+Configuration tools for kiosk machines.
+
+The Pi subproject is an interactive first-boot wizard for Raspberry Pi OS (Bookworm / Trixie, labwc).
 
 The repo must be **public**. Then, on the Pi:
 
@@ -15,7 +17,7 @@ Or copy this folder to a Pi / clone it there, then:
 
 To run the standalone totem registration flow later from a checkout:
 
-    PYTHONPATH=src python3 -m pi_kiosk register-totem
+    PYTHONPATH=pi/src python3 -m pi_kiosk register-totem
 
 Or directly from GitHub on the Pi:
 
@@ -69,7 +71,7 @@ The account password is not deleted. It is still used for sudo.
 The installer does not register anything remotely. Use the separate command when
 you want to register the device in your dashboard/backend:
 
-    PYTHONPATH=src python3 -m pi_kiosk register-totem
+    PYTHONPATH=pi/src python3 -m pi_kiosk register-totem
 
 If you are not inside a checkout on the Pi, use the pipeable form instead:
 
@@ -93,7 +95,7 @@ The hourly reporter sends:
 - `kiosk_running`: `true` when `labwc` is running for the desktop user
 - `webapp_running`: `true` when `127.0.0.1:8080` is answering
 
-Configure the endpoint and token in [src/pi_kiosk/totem_registration.py](/mnt/c/Users/Nitropc/orca/kiosk-config/src/pi_kiosk/totem_registration.py)
+Configure the endpoint and token in [pi/src/pi_kiosk/totem_registration.py](/mnt/c/Users/Nitropc/orca/kiosk-config/pi/src/pi_kiosk/totem_registration.py)
 or override them with:
 
 - `PI_KIOSK_REGISTER_TOTEM_URL`
@@ -114,10 +116,12 @@ URL is inferred from `PI_KIOSK_REGISTER_TOTEM_URL` by replacing the final
 
 ## Layout
 
-- `src/pi_kiosk/app.py` — wizard loop. Add a step here, not by forking the CLI.
-- `src/pi_kiosk/steps/` — one module per concern (rotation, touch, nosleep, autologin, RustDesk, webapp kiosk).
-- `src/pi_kiosk/host.py` — system port. Tests use an in-memory fake.
-- `src/pi_kiosk/linux.py` — the only code that touches a real machine.
+- `kiosk.sh` — root pipeable entry point; currently runs the Pi subproject.
+- `pi/src/pi_kiosk/app.py` — Pi wizard loop. Add a step here, not by forking the CLI.
+- `pi/src/pi_kiosk/steps/` — one Pi module per concern (rotation, touch, nosleep, autologin, RustDesk, webapp kiosk).
+- `pi/src/pi_kiosk/host.py` — Pi system port. Tests use an in-memory fake.
+- `pi/src/pi_kiosk/linux.py` — the only Pi code that touches a real machine.
+- `windows/` — placeholder for the future Windows subproject.
 
 Re-running is safe: tagged blocks in `~/.config/labwc/autostart` are replaced,
 not duplicated.

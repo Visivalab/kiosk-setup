@@ -25,6 +25,10 @@ script_dir() {
 package_root() {
   local dir="$1"
   local child
+  if [[ -d "$dir/pi/src/pi_kiosk" ]]; then
+    printf '%s\n' "$dir/pi"
+    return 0
+  fi
   if [[ -d "$dir/src/pi_kiosk" ]]; then
     printf '%s\n' "$dir"
     return 0
@@ -77,7 +81,7 @@ fetch_tree() {
   tar -xzf "$tarball" -C "$work"
   rm -f "$tarball"
   if ! root="$(package_root "$work")"; then
-    echo "Downloaded archive did not contain src/pi_kiosk." >&2
+    echo "Downloaded archive did not contain pi/src/pi_kiosk." >&2
     rm -rf "$work"
     return 1
   fi

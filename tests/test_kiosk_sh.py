@@ -56,12 +56,12 @@ class KioskShTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def _write_archive(self, dest: Path) -> None:
-        tree = self.root / "archive-tree" / "kiosk-config-master" / "src" / "pi_kiosk"
+        tree = self.root / "archive-tree" / "kiosk-config-master" / "pi" / "src" / "pi_kiosk"
         tree.mkdir(parents=True)
         (tree / "__init__.py").write_text("", encoding="utf-8")
         with tarfile.open(dest, "w:gz") as bundle:
             bundle.add(
-                tree.parents[1],
+                tree.parents[2],
                 arcname="kiosk-config-master",
             )
 
