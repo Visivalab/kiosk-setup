@@ -6,15 +6,17 @@ from pi_kiosk.choice import Choice
 from pi_kiosk.display import DISPLAY_CONFIG_KEY, DisplayConfig
 from pi_kiosk.files import read_or_empty, upsert_marked_block
 from pi_kiosk.host import RotationHost
+from pi_kiosk.shared_config import config as shared_config
 from pi_kiosk.ui import UI
 
 if TYPE_CHECKING:
     from pi_kiosk.wizard_context import WizardContext
 
+_ROTATION_LABELS = shared_config()["choices"]["rotation"]
 ROTATION_CHOICES = (
-    Choice("none", "No rotation"),
-    Choice("clockwise", "Rotate clockwise (90°)"),
-    Choice("counterclockwise", "Rotate counterclockwise (90°)"),
+    Choice("none", _ROTATION_LABELS["none"]),
+    Choice("clockwise", _ROTATION_LABELS["clockwise"]),
+    Choice("counterclockwise", _ROTATION_LABELS["counterclockwise"]),
 )
 
 _TRANSFORMS = {
@@ -39,7 +41,7 @@ def transform_for(choice_id: str) -> str:
 
 class RotationStep:
     id = "rotation"
-    title = "Screen rotation"
+    title = shared_config()["prompts"]["screenRotation"]
     choices = ROTATION_CHOICES
 
     def ask(self, ui: UI, context: WizardContext | None = None) -> str:

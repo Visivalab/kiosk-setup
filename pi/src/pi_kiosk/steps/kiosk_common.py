@@ -5,6 +5,7 @@ import shlex
 from pi_kiosk.choice import Choice
 from pi_kiosk.files import normalize_labwc_rc_xml, read_or_empty, upsert_marked_block
 from pi_kiosk.host import Host
+from pi_kiosk.shared_config import config as shared_config
 
 KIOSK_AUTOSTART_BEGIN = "# pi-kiosk-setup:kiosk-begin"
 KIOSK_AUTOSTART_END = "# pi-kiosk-setup:kiosk-end"
@@ -15,7 +16,7 @@ LEGACY_CURSOR_AUTOSTART_END = "# pi-kiosk-setup:cursor-hide-end"
 CURSOR_RC_BEGIN = "<!-- pi-kiosk-setup:cursor-hide-begin -->"
 CURSOR_RC_END = "<!-- pi-kiosk-setup:cursor-hide-end -->"
 CURSOR_KEYBIND = "A-W-h"
-NEXT_ACTION_PROMPT = "Choose what to do next."
+NEXT_ACTION_PROMPT = shared_config()["prompts"]["nextAction"]
 SIMULATE_AUTORUN = "simulate"
 REBOOT = "reboot"
 CLOSE = "close"

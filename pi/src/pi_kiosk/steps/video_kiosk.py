@@ -9,6 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import VideoHost, VideoSource
+from pi_kiosk.shared_config import config as shared_config
 from pi_kiosk.steps.kiosk_common import (
     CLOSE,
     REBOOT,
@@ -20,21 +21,14 @@ from pi_kiosk.ui import UI
 if TYPE_CHECKING:
     from pi_kiosk.wizard_context import WizardContext
 
-DROPBOX_PROMPT = "Dropbox link"
-VIDEO_NEXT_ACTION_PROMPT = "Choose what to do with the video now."
+_SHARED_CONFIG = shared_config()
+DROPBOX_PROMPT = _SHARED_CONFIG["prompts"]["videoSource"]
+VIDEO_NEXT_ACTION_PROMPT = _SHARED_CONFIG["prompts"]["videoNextAction"]
+_VIDEO_ACTION_CHOICES = _SHARED_CONFIG["choices"]["videoAction"]
 VIDEO_NEXT_ACTION_CHOICES = [
-    Choice(
-        id=SIMULATE_AUTORUN,
-        label="Launch video now",
-    ),
-    Choice(
-        id=REBOOT,
-        label="Reboot",
-    ),
-    Choice(
-        id=CLOSE,
-        label="Do nothing",
-    ),
+    Choice(id=SIMULATE_AUTORUN, label=_VIDEO_ACTION_CHOICES["launch"]),
+    Choice(id=REBOOT, label=_VIDEO_ACTION_CHOICES["reboot"]),
+    Choice(id=CLOSE, label=_VIDEO_ACTION_CHOICES["nothing"]),
 ]
 
 

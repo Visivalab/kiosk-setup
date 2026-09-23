@@ -5,8 +5,10 @@ from pathlib import Path
 from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from pi_kiosk.host import TotemStatusReporterConfig
+from pi_kiosk.shared_config import config as shared_config
 
 STATUS_PORT = 8080
+STATUS_INTERVAL_MINUTES = int(shared_config()["statusIntervalMinutes"])
 STATUS_SCRIPT_PATH = Path("/usr/local/lib/pi-kiosk/totem-status.py")
 STATUS_CONFIG_PATH = Path("/etc/pi-kiosk/totem-status.json")
 STATUS_SERVICE_PATH = Path("/etc/systemd/system/pi-kiosk-totem-status.service")
@@ -184,8 +186,8 @@ def timer_unit() -> str:
             "Description=Run pi-kiosk totem status reporter every 5 minutes",
             "",
             "[Timer]",
-            "OnBootSec=5min",
-            "OnUnitActiveSec=5min",
+            f"OnBootSec={STATUS_INTERVAL_MINUTES}min",
+            f"OnUnitActiveSec={STATUS_INTERVAL_MINUTES}min",
             "Persistent=true",
             "Unit=pi-kiosk-totem-status.service",
             "",

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import WebAppHost, WebAppSource
+from pi_kiosk.shared_config import config as shared_config
 from pi_kiosk.steps.kiosk_common import (
     CLOSE,
     CURSOR_RC_BEGIN,
@@ -32,10 +33,13 @@ SERVER_READY_RETRIES = 50
 SERVER_READY_DELAY_SECONDS = 0.2
 STARTUP_HEARTBEAT_RETRIES = 12
 STARTUP_HEARTBEAT_DELAY_SECONDS = 5
-RELEASE_URL_PROMPT = "S3 zip - example: screen_1_de/screen_1_de-dist.zip"
-S3_RELEASE_BASE_URL = "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
+_SHARED_CONFIG = shared_config()
+S3_RELEASE_BASE_URL = _SHARED_CONFIG["s3ReleaseBaseUrl"]
+_WEBAPP_PATH_EXAMPLE = _SHARED_CONFIG["webappPathExample"]
+RELEASE_URL_PROMPT = _SHARED_CONFIG["prompts"]["webappSource"].format(
+    example=_WEBAPP_PATH_EXAMPLE
+)
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
-_WEBAPP_PATH_EXAMPLE = "screen_1_de/screen_1_de-dist.zip"
 
 
 @dataclass(frozen=True)

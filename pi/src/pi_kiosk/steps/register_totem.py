@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pi_kiosk.host import TotemRegistrationHost
+from pi_kiosk.shared_config import config as shared_config
 from pi_kiosk.steps.project_kiosk import ProjectKioskStep
 from pi_kiosk.totem_registration import TotemRegistrar, TotemRegistrationRequest
 from pi_kiosk.ui import UI
@@ -10,7 +11,7 @@ from pi_kiosk.ui import UI
 if TYPE_CHECKING:
     from pi_kiosk.wizard_context import WizardContext
 
-REGISTER_TOTEM_PROMPT = "Register this totem now?"
+REGISTER_TOTEM_PROMPT = shared_config()["prompts"]["registerTotem"]
 
 
 class RegisterTotemStep:

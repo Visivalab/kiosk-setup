@@ -2,7 +2,14 @@
 
 Configuration tools for kiosk machines.
 
-The Pi subproject is an interactive first-boot wizard for Raspberry Pi OS (Bookworm / Trixie, labwc).
+The Pi subproject is an interactive first-boot wizard for Raspberry Pi OS (Bookworm / Trixie, labwc). The Windows subproject provides the equivalent setup for a single active display; multi-display configuration currently stops after listing the detected displays.
+
+On Windows, open PowerShell as Administrator and run:
+
+```powershell
+$url = 'https://raw.githubusercontent.com/Visivalab/pi-kiosk/master/windows/setup.ps1'
+Invoke-RestMethod -Uri $url | Invoke-Expression
+```
 
 The repo must be **public**. Then, on the Pi:
 
@@ -95,8 +102,7 @@ The status reporter sends:
 - `kiosk_running`: `true` when `labwc` is running for the desktop user
 - `webapp_running`: `true` when `127.0.0.1:8080` is answering
 
-Configure the endpoint and token in [pi/src/pi_kiosk/totem_registration.py](pi/src/pi_kiosk/totem_registration.py)
-or override them with:
+Configure the endpoint and token in [shared/kiosk.json](shared/kiosk.json) or override them with:
 
 - `PI_KIOSK_REGISTER_TOTEM_URL`
 - `PI_KIOSK_REGISTER_TOTEM_TOKEN`
@@ -121,7 +127,9 @@ URL is inferred from `PI_KIOSK_REGISTER_TOTEM_URL` by replacing the final
 - `pi/src/pi_kiosk/steps/` — one Pi module per concern (rotation, touch, nosleep, autologin, RustDesk, webapp kiosk).
 - `pi/src/pi_kiosk/host.py` — Pi system port. Tests use an in-memory fake.
 - `pi/src/pi_kiosk/linux.py` — the only Pi code that touches a real machine.
-- `windows/` — placeholder for the future Windows subproject.
+- `windows/setup.ps1` — remote Windows bootstrap that downloads one repository archive.
+- `windows/kiosk.ps1` — thin Windows entry point; steps live under `windows/src/steps/`.
+- `shared/kiosk.json` — service URLs and release settings shared by Pi and Windows.
 
 Re-running is safe: tagged blocks in `~/.config/labwc/autostart` are replaced,
 not duplicated.

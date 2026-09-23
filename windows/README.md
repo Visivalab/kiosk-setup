@@ -1,27 +1,48 @@
 # Windows kiosk config
 
-The Windows terminal entry point currently detects and lists every active display. It is read-only; per-display kiosk configuration is the next step.
+The Windows wizard currently runs the complete single-display setup. When more than one active display is detected it lists them and exits without changing the PC; per-display setup is the next milestone.
 
-From Command Prompt or PowerShell on Windows 10/11:
+## Run directly from GitHub
+
+Open Windows Terminal **as Administrator**, then run:
+
+```powershell
+$url = 'https://raw.githubusercontent.com/Visivalab/pi-kiosk/master/windows/setup.ps1'
+Invoke-RestMethod -Uri $url | Invoke-Expression
+```
+
+The bootstrap downloads one repository archive so the wizard, its steps, runtime scripts, and shared configuration always use the same revision.
+
+## Run a local checkout
+
+From the repository root in an Administrator terminal:
 
 ```bat
 windows\kiosk.cmd
 ```
 
-Example output:
+For a single active display the wizard configures:
 
-```text
-Detected displays
+1. Rotation
+2. Windows-managed touchscreen mapping
+3. Disabled display blanking and sleep
+4. Windows autologin through Microsoft Sysinternals Autologon
+5. RustDesk unattended access
+6. A webapp kiosk in Microsoft Edge or a looping video kiosk in VLC
+7. Optional totem registration and five-minute status reporting
+8. Launch now, reboot, or do nothing
 
-1) \\.\DISPLAY1 - 1920x1080 at (0,0) - Primary
-2) \\.\DISPLAY2 - 1920x1080 at (1920,0)
+RustDesk and VLC are installed with `winget` when missing. Webapps are served only on `http://127.0.0.1:8080` and start from the current user's Startup folder.
 
-Detected 2 active display(s).
-```
+## Layout
 
-The primary display is listed first. Other displays are ordered by their position in the Windows virtual desktop.
+- `kiosk.ps1` loads the wizard and exits with its result.
+- `src/app.ps1` defines the ordered wizard flow.
+- `src/steps/` contains one file per configuration concern.
+- `runtime/` contains the scripts copied to the configured PC.
+- `setup.ps1` is the remote GitHub bootstrap.
 
-Run the dependency-free display tests on Windows with:
+Run the dependency-free PowerShell checks on Windows with:
 
 ```bat
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\tests\run.ps1

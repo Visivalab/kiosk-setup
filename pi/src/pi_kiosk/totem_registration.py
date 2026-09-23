@@ -7,23 +7,26 @@ from typing import Callable
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import RustDeskHost, TotemRegistrationHost, TotemStatusReporterConfig
+from pi_kiosk.shared_config import config as shared_config
 from pi_kiosk.totem_status import derive_status_url
 from pi_kiosk.ui import UI
 
-REGISTER_TOTEM_URL = "http://72.62.59.66:8083/register-totem"
-REGISTER_TOTEM_TOKEN = "76cf38119e7a1822abd6935f76583ef1e97ee7fb23a72d39"
+_SHARED_CONFIG = shared_config()
+REGISTER_TOTEM_URL = _SHARED_CONFIG["registerTotemUrl"]
+REGISTER_TOTEM_TOKEN = _SHARED_CONFIG["registerTotemToken"]
 
-TOTEM_TYPE_PROMPT = "Totem type"
-TOTEM_NAME_PROMPT = "Totem name"
-TOTEM_DESCRIPTION_PROMPT = "Totem description"
-TOTEM_LOCATION_PROMPT = "Totem location"
+_PROMPTS = _SHARED_CONFIG["prompts"]
+TOTEM_TYPE_PROMPT = _PROMPTS["totemType"]
+TOTEM_NAME_PROMPT = _PROMPTS["totemName"]
+TOTEM_DESCRIPTION_PROMPT = _PROMPTS["totemDescription"]
+TOTEM_LOCATION_PROMPT = _PROMPTS["totemLocation"]
 RUSTDESK_INSTALL_PROMPT = "RustDesk is not installed. Install it now?"
 RUSTDESK_SET_PASSWORD_PROMPT = (
     "RustDesk is installed but no unattended password is saved. "
     "Set one for the backend?"
 )
 RUSTDESK_SKIP_WARNING = "The dashboard will not have remote access credentials."
-RUSTDESK_PASSWORD_PROMPT = "RustDesk password"
+RUSTDESK_PASSWORD_PROMPT = _PROMPTS["rustdeskPassword"]
 TOTEM_TYPE_CHOICES = [
     Choice(id="webapp", label="Webapp"),
     Choice(id="video", label="Video"),
