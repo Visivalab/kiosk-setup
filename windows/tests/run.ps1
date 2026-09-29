@@ -6,8 +6,8 @@ $ErrorActionPreference = "Stop"
 
 function Assert-Equal {
     param(
-        [Parameter(Mandatory = $true)] $Expected,
-        [Parameter(Mandatory = $true)] $Actual,
+        [Parameter(Mandatory = $true)] [AllowNull()] $Expected,
+        [Parameter(Mandatory = $true)] [AllowNull()] $Actual,
         [Parameter(Mandatory = $true)] [string] $Message
     )
 
@@ -132,6 +132,36 @@ $unnamed = New-TestPlan @(
 $unnamed.TotemName = ""
 Assert-Match "totem name" (Test-KioskPlan $unnamed) "Registration should require a totem name."
 
+$badAudio = New-TestPlan @(
+    (New-KioskDisplayPlan $displays[0] -Rotation "none" -Type "video" -Source $dropboxOne),
+    (New-KioskDisplayPlan $displays[1] -Rotation "none" -Type "video" -Source $dropboxTwo)
+)
+$badAudio.AudioDisplay = 7
+Assert-Match "audio comes from" (Test-KioskPlan $badAudio) "The audio source must be one of the configured videos."
+$badAudio.AudioDisplay = 2
+Assert-Equal $null (Test-KioskPlan $badAudio) "A video display is a valid audio source."
+$badAudio.AudioDisplay = 0
+Assert-Equal $null (Test-KioskPlan $badAudio) "Muting every screen is allowed."
+
+$audioRoot = "HKCU:\Software\pi-kiosk-test-$([guid]::NewGuid())"
+try {
+    $endpoint = "{11111111-2222-3333-4444-555555555555}"
+    [void] (New-Item -Path "$audioRoot\$endpoint\Properties" -Force)
+    Set-ItemProperty -Path "$audioRoot\$endpoint" -Name DeviceState -Value 1 -Type DWord
+    Set-ItemProperty -Path "$audioRoot\$endpoint\Properties" `
+        -Name "{b3f8fa53-0004-438e-9003-51a46e139bf8},6" -Value "Speakers (Test)"
+    $offline = "{99999999-2222-3333-4444-555555555555}"
+    [void] (New-Item -Path "$audioRoot\$offline" -Force)
+    Set-ItemProperty -Path "$audioRoot\$offline" -Name DeviceState -Value 8 -Type DWord
+
+    $devices = @(Get-KioskAudioDevices -Root $audioRoot)
+    Assert-Equal 1 $devices.Count "Only active render endpoints should be offered."
+    Assert-Equal "Speakers (Test)" $devices[0].Name "Endpoints should be listed by their friendly name."
+    Assert-Equal "{0.0.0.00000000}.$endpoint" $devices[0].Id "Endpoint ids should carry the render prefix."
+} finally {
+    Remove-Item -Recurse -Force $audioRoot -ErrorAction SilentlyContinue
+}
+
 Assert-Equal "remote-secret" (Unprotect-KioskGuiSecret (Protect-KioskGuiSecret "remote-secret")) "GUI secrets should round-trip through Windows encryption."
 
 Initialize-RotationApi
@@ -154,7 +184,8 @@ function Get-KioskMachineRoot { $machineRoot }
 function Get-KioskRoot { $runtimeRoot }
 try {
     $launcher = Write-WebRuntime $runtimeRoot (Join-Path $runtimeRoot "app") 8080
-    $orchestrator = Write-KioskOrchestrator $twoVideos.Displays
+    $twoVideos.Displays[0].Audio = $true
+    $orchestrator = Write-KioskOrchestrator -Displays $twoVideos.Displays -AudioDevice "{0.0.0.00000000}.{abc}"
     foreach ($file in @(
         $launcher,
         $orchestrator,
@@ -171,6 +202,10 @@ try {
     Assert-Match "start-paused" $generated "Several videos should be held until every player is ready."
     Assert-Match "primary" $generated "The orchestrator should target each configured display by name."
     Assert-Match "left" $generated "The orchestrator should target each configured display by name."
+    Assert-Match "--no-audio" $generated "Screens without the audio should be muted."
+    Assert-Match "mmdevice-audio-device" $generated "The chosen output should reach the player that carries the audio."
+    Assert-Match '"audio":true' $generated "Exactly one screen should be marked as carrying the audio."
+    Assert-Equal 1 ([regex]::Matches($generated, '"audio":true').Count) "Only one screen may carry the audio."
 } finally {
     Remove-Item -Recurse -Force $runtimeRoot -ErrorAction SilentlyContinue
 }

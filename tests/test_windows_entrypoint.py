@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 
 
@@ -30,6 +31,44 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("Invoke-KioskGuiSetup", gui)
         for function in ("New-KioskDisplayPlan", "New-KioskPlan", "Test-KioskPlan", "Invoke-KioskPlan"):
             self.assertIn(function, gui)
+
+    def test_windows_reads_shared_and_state_files_as_utf8(self):
+        offenders = []
+        for script in sorted(WINDOWS.rglob("*.ps1")):
+            for number, line in enumerate(script.read_text(encoding="utf-8").splitlines(), 1):
+                if "Get-Content" not in line or "ConvertFrom-Json" not in line:
+                    continue
+                if "-Encoding UTF8" not in line:
+                    offenders.append(f"{script.relative_to(ROOT)}:{number}")
+        self.assertEqual([], offenders)
+
+    def test_rotation_labels_stay_ascii(self):
+        shared = (ROOT / "shared" / "kiosk.json").read_text(encoding="utf-8")
+
+        self.assertIn("90 deg", shared)
+        self.assertNotIn("\u00b0", shared)
+
+    def test_gui_scrolls_on_a_panel_with_auto_sized_rows(self):
+        gui = read("kiosk-gui.ps1")
+
+        self.assertIn("$scroll.AutoScroll = $true", gui)
+        self.assertIn('$scroll.Dock = "Fill"', gui)
+        self.assertIn('$root.Dock = "Top"', gui)
+        self.assertIn("$root.AutoSize = $true", gui)
+        self.assertNotIn("$root.AutoScroll", gui)
+        self.assertNotIn("$root.Controls.Add(", gui)
+        self.assertIn("function Add-KioskGuiRow", gui)
+
+    def test_gui_never_leaks_collection_indexes_into_its_output(self):
+        gui = read("kiosk-gui.ps1")
+
+        leaking = [
+            line.strip()
+            for line in gui.splitlines()
+            if re.search(r"\.(RowStyles|ColumnStyles|TabPages)\.Add\(", line)
+            and not line.strip().startswith("[void]")
+        ]
+        self.assertEqual([], leaking)
 
     def test_remote_setup_opens_the_visual_wizard(self):
         setup = read("setup.ps1")
@@ -121,6 +160,36 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("kiosk_running", status)
         self.assertIn("webapp_running", status)
 
+    def test_audio_is_routed_to_one_screen_and_one_output(self):
+        audio = read("src", "steps", "audio.ps1")
+        plan = read("src", "plan.ps1")
+        startup = read("src", "steps", "startup.ps1")
+        app = read("src", "app.ps1")
+        gui = read("kiosk-gui.ps1")
+
+        self.assertIn("function Get-KioskAudioDevices", audio)
+        self.assertIn("function Test-KioskVideoHasAudio", audio)
+        self.assertIn("function Resolve-KioskAudioPlan", audio)
+        self.assertIn("MMDevices\\Audio\\Render", audio)
+        self.assertIn("System.Audio.ChannelCount", audio)
+        self.assertIn("AudioDisplay", plan)
+        self.assertIn("Choose which video the audio comes from.", plan)
+        self.assertIn("--no-audio", startup)
+        self.assertIn("--mmdevice-audio-device", startup)
+        self.assertIn("Resolve-KioskAudioPlan", app)
+        self.assertIn('New-KioskGuiGroup "Audio"', gui)
+        self.assertLess(app.index("Resolve-KioskAudioPlan"), app.index("Write-KioskOrchestrator"))
+
+    def test_audio_device_is_rechecked_before_playback(self):
+        startup = read("src", "steps", "startup.ps1")
+
+        self.assertIn("function Test-KioskAudioDevice", startup)
+        self.assertIn("DeviceState", startup)
+        self.assertLess(
+            startup.index("function Test-KioskAudioDevice"),
+            startup.index("function Start-KioskPlayer"),
+        )
+
     def test_windows_steps_are_separate_files(self):
         steps = WINDOWS / "src" / "steps"
         for name in (
@@ -130,6 +199,7 @@ class WindowsEntrypointTests(unittest.TestCase):
             "rustdesk",
             "webapp",
             "video",
+            "audio",
             "startup",
             "registration",
             "final-action",

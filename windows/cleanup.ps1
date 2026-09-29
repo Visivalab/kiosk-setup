@@ -99,7 +99,7 @@ function Get-KioskCleanupPorts {
     $statePath = Join-Path $MachineRoot "kiosk-state.json"
     if (Test-Path $statePath) {
         try {
-            $state = Get-Content -Raw $statePath | ConvertFrom-Json
+            $state = Get-Content -Raw -Encoding UTF8 $statePath | ConvertFrom-Json
             $ports = @(@($state.ports) | Where-Object { $_ } | ForEach-Object { [int] $_ })
             if ($ports.Count -gt 0) { return $ports }
         } catch {}

@@ -45,7 +45,10 @@ function ConvertFrom-KioskGuiConfig {
         -TotemName ([string] $Config.totemName) `
         -TotemDescription ([string] $Config.totemDescription) `
         -TotemLocation ([string] $Config.totemLocation) `
-        -FinalAction ([string] $Config.finalAction)
+        -FinalAction ([string] $Config.finalAction) `
+        -AudioDisplay ([int] $Config.audioDisplay) `
+        -AudioDevice ([string] $Config.audioDevice) `
+        -AudioDeviceName ([string] $Config.audioDeviceName)
 }
 
 function Invoke-KioskGuiSetup {
@@ -53,7 +56,7 @@ function Invoke-KioskGuiSetup {
     try {
         if (-not (Test-KioskAdministrator)) { throw "Administrator access is required." }
         $script:SharedConfig = Get-KioskSharedConfig
-        $config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
+        $config = Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
         $plan = ConvertFrom-KioskGuiConfig $config (Get-KioskDisplays)
         Invoke-KioskPlan $plan
         return 0
@@ -73,7 +76,7 @@ function Add-KioskGuiField {
     )
     $row = $Table.RowCount
     $Table.RowCount++
-    $Table.RowStyles.Add([Windows.Forms.RowStyle]::new([Windows.Forms.SizeType]::AutoSize))
+    [void] $Table.RowStyles.Add([Windows.Forms.RowStyle]::new([Windows.Forms.SizeType]::AutoSize))
     $label = [Windows.Forms.Label]::new()
     $label.Text = $Text
     $label.AutoSize = $true
@@ -84,6 +87,17 @@ function Add-KioskGuiField {
     $Control.AccessibleName = $Text.TrimEnd(":")
     $Table.Controls.Add($label, 0, $row)
     $Table.Controls.Add($Control, 1, $row)
+}
+
+function Add-KioskGuiRow {
+    param(
+        [Windows.Forms.TableLayoutPanel] $Root,
+        [Windows.Forms.Control] $Control
+    )
+    $row = $Root.RowCount
+    $Root.RowCount++
+    [void] $Root.RowStyles.Add([Windows.Forms.RowStyle]::new([Windows.Forms.SizeType]::AutoSize))
+    $Root.Controls.Add($Control, 0, $row)
 }
 
 function New-KioskGuiGroup {
@@ -101,8 +115,8 @@ function New-KioskGuiGroup {
     $table.AutoSizeMode = "GrowAndShrink"
     $table.Dock = "Fill"
     $table.ColumnCount = 2
-    $table.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new([Windows.Forms.SizeType]::Absolute, 180))
-    $table.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new([Windows.Forms.SizeType]::Percent, 100))
+    [void] $table.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new([Windows.Forms.SizeType]::Absolute, 180))
+    [void] $table.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new([Windows.Forms.SizeType]::Percent, 100))
     $group.Controls.Add($table)
     [pscustomobject]@{ Group = $group; Table = $table }
 }
@@ -140,20 +154,28 @@ function Show-KioskGui {
     $form.Font = [Drawing.SystemFonts]::MessageBoxFont
     $form.AutoScaleMode = "Font"
 
+    $scroll = [Windows.Forms.Panel]::new()
+    $scroll.Dock = "Fill"
+    $scroll.AutoScroll = $true
+    $scroll.Padding = [Windows.Forms.Padding]::new(24)
+    $form.Controls.Add($scroll)
+
     $root = [Windows.Forms.TableLayoutPanel]::new()
-    $root.Dock = "Fill"
-    $root.AutoScroll = $true
+    $root.Dock = "Top"
+    $root.AutoSize = $true
+    $root.AutoSizeMode = "GrowAndShrink"
     $root.ColumnCount = 1
-    $root.Padding = [Windows.Forms.Padding]::new(24)
-    $root.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new([Windows.Forms.SizeType]::Percent, 100))
-    $form.Controls.Add($root)
+    $root.RowCount = 0
+    $root.GrowStyle = "AddRows"
+    [void] $root.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new([Windows.Forms.SizeType]::Percent, 100))
+    $scroll.Controls.Add($root)
 
     $title = [Windows.Forms.Label]::new()
     $title.Text = "Configure this Windows kiosk"
     $title.Font = [Drawing.Font]::new($form.Font.FontFamily, 16, [Drawing.FontStyle]::Bold)
     $title.AutoSize = $true
     $title.Margin = [Windows.Forms.Padding]::new(0, 0, 0, 6)
-    $root.Controls.Add($title)
+    Add-KioskGuiRow $root $title
 
     $intro = [Windows.Forms.Label]::new()
     $intro.Text = if ($multiple) {
@@ -164,12 +186,12 @@ function Show-KioskGui {
     $intro.AutoSize = $true
     $intro.MaximumSize = [Drawing.Size]::new(640, 0)
     $intro.Margin = [Windows.Forms.Padding]::new(0, 0, 0, 20)
-    $root.Controls.Add($intro)
+    Add-KioskGuiRow $root $intro
 
     $sections = @()
     if ($multiple) {
         $tabs = [Windows.Forms.TabControl]::new()
-        $tabs.Dock = "Top"
+        $tabs.Anchor = "Top, Left, Right"
         $tabs.Height = 190
         $tabs.Margin = [Windows.Forms.Padding]::new(0, 0, 0, 16)
         foreach ($display in $displays) {
@@ -189,7 +211,7 @@ function Show-KioskGui {
                 Display = $display; Rotation = $rotationBox; Type = $null; FixedType = "video"; Source = $sourceBox
             }
         }
-        $root.Controls.Add($tabs)
+        Add-KioskGuiRow $root $tabs
     } else {
         $displayGroup = New-KioskGuiGroup "Display"
         $displayBox = [Windows.Forms.TextBox]::new()
@@ -198,7 +220,7 @@ function Show-KioskGui {
         Add-KioskGuiField $displayGroup.Table "Active display:" $displayBox
         $rotationBox = New-KioskGuiRotation
         Add-KioskGuiField $displayGroup.Table "Rotation:" $rotationBox
-        $root.Controls.Add($displayGroup.Group)
+        Add-KioskGuiRow $root $displayGroup.Group
 
         $contentGroup = New-KioskGuiGroup "Kiosk content"
         $projectType = [Windows.Forms.ComboBox]::new()
@@ -213,11 +235,51 @@ function Show-KioskGui {
         Add-KioskGuiField $contentGroup.Table "S3 ZIP path:" $sourceBox
         $sourceLabel = $contentGroup.Table.GetControlFromPosition(0, 1)
         $sourceBox.AccessibleDescription = "Example: $($script:SharedConfig.webappPathExample)"
-        $root.Controls.Add($contentGroup.Group)
+        Add-KioskGuiRow $root $contentGroup.Group
         $sections += [pscustomobject]@{
             Display = $displays[0]; Rotation = $rotationBox; Type = $projectType; FixedType = ""; Source = $sourceBox
         }
     }
+
+    $audioGroup = New-KioskGuiGroup "Audio"
+    $audioDevices = @()
+    $audioSource = [Windows.Forms.ComboBox]::new()
+    $audioSource.DropDownStyle = "DropDownList"
+    if ($multiple) {
+        foreach ($display in $displays) {
+            [void] $audioSource.Items.Add("Display $($display.Number) ($($display.DeviceName))")
+        }
+        $audioDevices = @(Get-KioskAudioDevices)
+    } else {
+        [void] $audioSource.Items.Add("Display 1 - the only screen")
+    }
+    $audioSource.SelectedIndex = 0
+    $audioSource.Enabled = $multiple
+    Add-KioskGuiField $audioGroup.Table "Audio from:" $audioSource
+
+    $audioOutput = [Windows.Forms.ComboBox]::new()
+    $audioOutput.DropDownStyle = "DropDownList"
+    [void] $audioOutput.Items.Add("Default output - whatever is available when it plays")
+    foreach ($device in $audioDevices) { [void] $audioOutput.Items.Add($device.Name) }
+    $audioOutput.SelectedIndex = 0
+    $audioOutput.Enabled = $multiple
+    Add-KioskGuiField $audioGroup.Table "Output:" $audioOutput
+
+    $audioNote = [Windows.Forms.Label]::new()
+    $audioNote.Text = if ($multiple) {
+        "Only one screen plays sound; the others are muted. If just one video turns out to carry an audio track, setup uses that one."
+    } else {
+        "The only video plays its own sound through the output available when it plays."
+    }
+    $audioNote.AutoSize = $true
+    $audioNote.MaximumSize = [Drawing.Size]::new(480, 0)
+    $audioNote.Margin = [Windows.Forms.Padding]::new(0, 8, 0, 0)
+    $audioNoteRow = $audioGroup.Table.RowCount
+    $audioGroup.Table.RowCount++
+    [void] $audioGroup.Table.RowStyles.Add([Windows.Forms.RowStyle]::new([Windows.Forms.SizeType]::AutoSize))
+    $audioGroup.Table.Controls.Add($audioNote, 0, $audioNoteRow)
+    $audioGroup.Table.SetColumnSpan($audioNote, 2)
+    Add-KioskGuiRow $root $audioGroup.Group
 
     $accountGroup = New-KioskGuiGroup "Access"
     $windowsPassword = [Windows.Forms.TextBox]::new()
@@ -227,7 +289,7 @@ function Show-KioskGui {
     $rustDeskPassword = [Windows.Forms.TextBox]::new()
     $rustDeskPassword.UseSystemPasswordChar = $true
     Add-KioskGuiField $accountGroup.Table "RustDesk password:" $rustDeskPassword
-    $root.Controls.Add($accountGroup.Group)
+    Add-KioskGuiRow $root $accountGroup.Group
 
     $registrationGroup = New-KioskGuiGroup "Registration"
     $registerTotem = [Windows.Forms.CheckBox]::new()
@@ -244,7 +306,7 @@ function Show-KioskGui {
     Add-KioskGuiField $registrationGroup.Table "Description:" $totemDescription
     $totemLocation = [Windows.Forms.TextBox]::new()
     Add-KioskGuiField $registrationGroup.Table "Location:" $totemLocation
-    $root.Controls.Add($registrationGroup.Group)
+    Add-KioskGuiRow $root $registrationGroup.Group
 
     $finishGroup = New-KioskGuiGroup "After setup"
     $finalAction = [Windows.Forms.ComboBox]::new()
@@ -253,25 +315,26 @@ function Show-KioskGui {
     [void] $finalAction.Items.AddRange(@("Launch now", "Reboot", $lastChoice))
     $finalAction.SelectedIndex = 0
     Add-KioskGuiField $finishGroup.Table "Next action:" $finalAction
-    $root.Controls.Add($finishGroup.Group)
+    Add-KioskGuiRow $root $finishGroup.Group
 
     $status = [Windows.Forms.TextBox]::new()
     $status.Multiline = $true
     $status.ReadOnly = $true
     $status.ScrollBars = "Vertical"
     $status.Height = 130
-    $status.Dock = "Top"
+    $status.Anchor = "Top, Left, Right"
     $status.AccessibleName = "Setup progress"
     $status.Text = "Ready."
     $status.Margin = [Windows.Forms.Padding]::new(0, 0, 0, 12)
-    $root.Controls.Add($status)
+    Add-KioskGuiRow $root $status
 
     $apply = [Windows.Forms.Button]::new()
     $apply.Text = "Configure kiosk"
     $apply.AutoSize = $true
     $apply.MinimumSize = [Drawing.Size]::new(140, 38)
     $apply.Anchor = "Right"
-    $root.Controls.Add($apply)
+    $apply.Margin = [Windows.Forms.Padding]::new(0, 4, 0, 24)
+    Add-KioskGuiRow $root $apply
     $form.AcceptButton = $apply
 
     if (-not $multiple) {
@@ -283,11 +346,15 @@ function Show-KioskGui {
                 $singleSource.AccessibleName = "S3 ZIP path"
                 $singleSource.AccessibleDescription = "Example: $($script:SharedConfig.webappPathExample)"
                 $finalAction.Items[2] = "Keep the app server running"
+                $audioSource.Items[0] = "Webapp on display 1"
+                $audioNote.Text = "The webapp plays its own sound through the output available when it plays."
             } else {
                 $sourceLabel.Text = "Dropbox link:"
                 $singleSource.AccessibleName = "Dropbox link"
                 $singleSource.AccessibleDescription = "Dropbox shared video link"
                 $finalAction.Items[2] = "Do nothing"
+                $audioSource.Items[0] = "Display 1 - the only screen"
+                $audioNote.Text = "The only video plays its own sound through the output available when it plays."
             }
         })
     }
@@ -329,7 +396,24 @@ function Show-KioskGui {
                 -Rotation @("none", "clockwise", "counterclockwise")[$_.Rotation.SelectedIndex] `
                 -Type $type -Source $_.Source.Text.Trim()
         })
+        $audioNumber = 0
+        $audioId = ""
+        $audioName = ""
+        $videoPlanned = @($planned | Where-Object { $_.Type -eq "video" })
+        if ($videoPlanned.Count -gt 0) {
+            if ($multiple) {
+                $audioNumber = $displays[$audioSource.SelectedIndex].Number
+                if ($audioOutput.SelectedIndex -gt 0) {
+                    $audioId = $audioDevices[$audioOutput.SelectedIndex - 1].Id
+                    $audioName = $audioDevices[$audioOutput.SelectedIndex - 1].Name
+                }
+            } else {
+                $audioNumber = $videoPlanned[0].Number
+            }
+        }
+
         $plan = New-KioskPlan -Displays $planned `
+            -AudioDisplay $audioNumber -AudioDevice $audioId -AudioDeviceName $audioName `
             -WindowsPassword $windowsPassword.Text -RustDeskPassword $rustDeskPassword.Text `
             -Register $registerTotem.Checked -TotemName $totemName.Text `
             -TotemDescription $totemDescription.Text -TotemLocation $totemLocation.Text `
@@ -355,6 +439,9 @@ function Show-KioskGui {
             totemDescription = $plan.TotemDescription
             totemLocation = $plan.TotemLocation
             finalAction = $plan.FinalAction
+            audioDisplay = $plan.AudioDisplay
+            audioDevice = $plan.AudioDevice
+            audioDeviceName = $plan.AudioDeviceName
             displays = @(@($plan.Displays) | ForEach-Object {
                 @{ number = $_.Number; deviceName = $_.DeviceName; rotation = $_.Rotation; type = $_.Type; source = $_.Source }
             })

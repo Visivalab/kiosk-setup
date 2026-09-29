@@ -1,7 +1,7 @@
 function Get-SavedRustDesk {
     $path = Join-Path (Get-KioskMachineRoot) "rustdesk.json"
     if (Test-Path $path) {
-        Get-Content -Raw $path | ConvertFrom-Json
+        Get-Content -Raw -Encoding UTF8 $path | ConvertFrom-Json
         return
     }
     [pscustomobject]@{ id = $null; password = $null }
@@ -17,6 +17,7 @@ function ConvertTo-KioskScreenReport {
             rotation   = $_.Rotation
             source     = $_.Source
             port       = $_.Port
+            audio      = [bool] $_.Audio
         }
     })
 }

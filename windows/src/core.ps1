@@ -1,7 +1,7 @@
 function Get-KioskSharedConfig {
     $local = Join-Path (Split-Path $script:WindowsRoot -Parent) "shared\kiosk.json"
     if (Test-Path $local) {
-        Get-Content -Raw -Path $local | ConvertFrom-Json
+        Get-Content -Raw -Encoding UTF8 -Path $local | ConvertFrom-Json
         return
     }
     throw "Shared kiosk configuration was not found at $local."
@@ -54,6 +54,7 @@ function Save-KioskState {
             source     = $_.Source
             path       = $_.Path
             port       = $_.Port
+            audio      = [bool] $_.Audio
         }
     })
     $state = [ordered]@{
@@ -61,6 +62,9 @@ function Save-KioskState {
         updatedAt = [DateTime]::UtcNow.ToString("o")
         launcher  = $Launcher
         stateDir  = Join-Path (Get-KioskRoot) "state"
+        audioDisplay = $Plan.AudioDisplay
+        audioDevice = $Plan.AudioDevice
+        audioDeviceName = $Plan.AudioDeviceName
         ports     = @(@($Plan.Displays) | Where-Object { $_.Port -gt 0 } | ForEach-Object { $_.Port })
         displays  = $displays
     }
@@ -73,5 +77,5 @@ function Save-KioskState {
 function Get-KioskState {
     $path = Join-Path $env:ProgramData "pi-kiosk\kiosk-state.json"
     if (-not (Test-Path $path)) { return $null }
-    try { Get-Content -Raw -Path $path | ConvertFrom-Json } catch { $null }
+    try { Get-Content -Raw -Encoding UTF8 -Path $path | ConvertFrom-Json } catch { $null }
 }

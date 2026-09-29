@@ -48,7 +48,7 @@ function Lock-KioskWebApp {
 <script>window.addEventListener("contextmenu", event => event.preventDefault(), true);</script>
 '@
     foreach ($file in Get-ChildItem -Recurse -File -Filter *.html $Root) {
-        $html = Get-Content -Raw $file.FullName
+        $html = Get-Content -Raw -Encoding UTF8 $file.FullName
         if ($html.Contains('id="pi-kiosk-lockdown"')) { continue }
         if ($html -match "(?i)<head[^>]*>") {
             $html = $html -replace "(?i)(<head[^>]*>)", "`$1`r`n$block"

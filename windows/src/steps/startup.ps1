@@ -5,7 +5,7 @@ function Get-KioskStateDir {
 }
 
 function Write-KioskOrchestrator {
-    param([object[]] $Displays)
+    param([object[]] $Displays, [AllowEmptyString()][string] $AudioDevice = "")
 
     $root = Get-KioskRoot
     $bin = Join-Path $root "bin"
@@ -21,6 +21,7 @@ function Write-KioskOrchestrator {
             path     = $_.Path
             launcher = $_.Launcher
             rcPort   = 9010 + $_.Number
+            audio    = [bool] $_.Audio
         }
     })
     $json = (ConvertTo-Json @($items) -Depth 4 -Compress).Replace("'", "''")
@@ -31,6 +32,7 @@ function Write-KioskOrchestrator {
         ("`$items = @(ConvertFrom-Json '{0}')" -f $json),
         ("`$vlc = '{0}'" -f $vlc.Replace("'", "''")),
         ("`$stateDir = '{0}'" -f $stateDir.Replace("'", "''")),
+        ("`$audioDevice = '{0}'" -f $AudioDevice.Replace("'", "''")),
         ""
     ) -join "`r`n"
 
@@ -47,6 +49,18 @@ function Get-KioskScreenNumber {
     0
 }
 
+function Test-KioskAudioDevice {
+    param([string] $Id)
+
+    if (-not $Id) { return $false }
+    $guid = $Id.Substring($Id.LastIndexOf(".") + 1)
+    $path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render\$guid"
+    if (-not (Test-Path $path)) { return $false }
+    $state = Get-ItemProperty -Path $path -Name DeviceState -ErrorAction SilentlyContinue
+    if (-not $state) { return $false }
+    $state.DeviceState -eq 1
+}
+
 function Start-KioskPlayer {
     param([object] $Item, [bool] $Paused)
 
@@ -58,6 +72,13 @@ function Start-KioskPlayer {
         "--fullscreen", "--loop", "--no-video-title-show", "--no-qt-fs-controller", "--mouse-hide-timeout=0",
         ("--qt-fullscreen-screennumber={0}" -f (Get-KioskScreenNumber $Item.device))
     )
+    if ($Item.audio) {
+        if (Test-KioskAudioDevice $audioDevice) {
+            $arguments += @("--aout=mmdevice", ("--mmdevice-audio-device={0}" -f $audioDevice))
+        }
+    } else {
+        $arguments += "--no-audio"
+    }
     if ($Paused) {
         $arguments += @("--start-paused", "--extraintf", "rc", "--rc-host", ("127.0.0.1:{0}" -f $Item.rcPort))
     }

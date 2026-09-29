@@ -25,6 +25,7 @@ function New-KioskDisplayPlan {
         Path       = ""
         Launcher   = ""
         Port       = 0
+        Audio      = $false
     }
 }
 
@@ -37,7 +38,10 @@ function New-KioskPlan {
         [AllowEmptyString()][string] $TotemName = "",
         [AllowEmptyString()][string] $TotemDescription = "",
         [AllowEmptyString()][string] $TotemLocation = "",
-        [string] $FinalAction = "nothing"
+        [string] $FinalAction = "nothing",
+        [int] $AudioDisplay = 0,
+        [AllowEmptyString()][string] $AudioDevice = "",
+        [AllowEmptyString()][string] $AudioDeviceName = ""
     )
 
     [pscustomobject]@{
@@ -49,6 +53,9 @@ function New-KioskPlan {
         TotemDescription = $TotemDescription
         TotemLocation    = $TotemLocation
         FinalAction      = $FinalAction
+        AudioDisplay     = $AudioDisplay
+        AudioDevice      = $AudioDevice
+        AudioDeviceName  = $AudioDeviceName
     }
 }
 
@@ -72,6 +79,13 @@ function Test-KioskPlan {
             else { [void] (Normalize-VideoSource $display.Source) }
         } catch {
             return "$label - $($_.Exception.Message)"
+        }
+    }
+
+    if ($Plan.AudioDisplay -ne 0) {
+        $source = @($displays | Where-Object { $_.Number -eq $Plan.AudioDisplay })
+        if ($source.Count -ne 1 -or $source[0].Type -ne "video") {
+            return "Choose which video the audio comes from."
         }
     }
 

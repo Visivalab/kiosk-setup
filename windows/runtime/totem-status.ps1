@@ -1,6 +1,6 @@
 param([string] $ConfigPath)
 
-$config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
+$config = Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
 
 function Test-KioskPort {
     param([int] $Port)
@@ -19,7 +19,7 @@ function Test-KioskPlayer {
     $path = Join-Path $StateDir "display-$Number.json"
     if (-not (Test-Path $path)) { return $false }
     try {
-        $state = Get-Content -Raw $path | ConvertFrom-Json
+        $state = Get-Content -Raw -Encoding UTF8 $path | ConvertFrom-Json
         return [bool] (Get-Process -Id ([int] $state.pid) -ErrorAction SilentlyContinue)
     } catch { return $false }
 }

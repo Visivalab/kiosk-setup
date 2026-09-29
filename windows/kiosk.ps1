@@ -20,6 +20,7 @@ foreach ($file in @(
     "src\steps\rustdesk.ps1",
     "src\steps\webapp.ps1",
     "src\steps\video.ps1",
+    "src\steps\audio.ps1",
     "src\steps\startup.ps1",
     "src\steps\registration.ps1",
     "src\steps\final-action.ps1",

@@ -19,7 +19,8 @@ function Invoke-KioskPlan {
         else { [void] (Install-KioskVideo $display) }
     }
 
-    $launcher = Write-KioskOrchestrator $Plan.Displays
+    Resolve-KioskAudioPlan $Plan
+    $launcher = Write-KioskOrchestrator -Displays $Plan.Displays -AudioDevice $Plan.AudioDevice
     Set-KioskStartup $launcher
     [void] (Save-KioskState $Plan $launcher)
     $screens = if (@($Plan.Displays).Count -gt 1) { "$(@($Plan.Displays).Count) screens" } else { "one screen" }
@@ -85,6 +86,25 @@ function Read-KioskPlan {
     }
     $planned = @(@($Displays) | ForEach-Object { Read-KioskDisplayPlan $_ $videoOnly })
 
+    $audioDisplay = 0
+    $audioDevice = ""
+    $audioDeviceName = ""
+    $videos = @($planned | Where-Object { $_.Type -eq "video" })
+    if ($videos.Count -gt 0) { $audioDisplay = $videos[0].Number }
+    if ($videos.Count -gt 1) {
+        $labels = @($videos | ForEach-Object { "Display $($_.Number) ($($_.DeviceName))" })
+        $audioDisplay = $videos[(Read-KioskChoice "Which video plays the audio? The other screens are muted." $labels)].Number
+        $devices = @(Get-KioskAudioDevices)
+        if ($devices.Count -gt 0) {
+            $options = @("Default output - whatever is available when it plays") + @($devices | ForEach-Object { $_.Name })
+            $choice = Read-KioskChoice "Audio output" $options
+            if ($choice -gt 0) {
+                $audioDevice = $devices[$choice - 1].Id
+                $audioDeviceName = $devices[$choice - 1].Name
+            }
+        }
+    }
+
     $windowsPassword = Read-KioskSecret "Windows password for $env:USERDOMAIN\$env:USERNAME. Use the account password, not the PIN. Leave blank only if this local account has no password" -AllowEmpty
     $rustdeskPassword = Read-KioskSecret $script:SharedConfig.prompts.rustdeskPassword
 
@@ -100,7 +120,7 @@ function Read-KioskPlan {
 
     New-KioskPlan -Displays $planned -WindowsPassword $windowsPassword -RustDeskPassword $rustdeskPassword `
         -Register $register -TotemName $name -TotemDescription $description -TotemLocation $location `
-        -FinalAction "nothing"
+        -FinalAction "nothing" -AudioDisplay $audioDisplay -AudioDevice $audioDevice -AudioDeviceName $audioDeviceName
 }
 
 function Invoke-KioskWizard {
