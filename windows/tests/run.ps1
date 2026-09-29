@@ -162,6 +162,21 @@ try {
     Remove-Item -Recurse -Force $audioRoot -ErrorAction SilentlyContinue
 }
 
+$savedState = [pscustomobject]@{
+    displays = @(
+        [pscustomobject]@{ number = 1; deviceName = "primary"; type = "video"; rotation = "clockwise"; source = "a"; port = 0; audio = $true },
+        [pscustomobject]@{ number = 2; deviceName = "left"; type = "video"; rotation = "none"; source = "b"; port = 0 }
+    )
+}
+function Get-KioskState { $savedState }
+$reused = @(Get-KioskRegistrationDisplays)
+Assert-Equal 2 $reused.Count "Registration should reuse every screen from the saved setup."
+Assert-Equal "primary" $reused[0].DeviceName "Saved screens keep their device name."
+Assert-Equal $true $reused[0].Audio "Saved screens keep which one carries the audio."
+Assert-Equal $false $reused[1].Audio "A state file without the audio flag should not fail."
+function Get-KioskState { $null }
+Assert-Equal $null (Get-KioskRegistrationDisplays) "Without a saved setup there is nothing to reuse."
+
 Assert-Equal "remote-secret" (Unprotect-KioskGuiSecret (Protect-KioskGuiSecret "remote-secret")) "GUI secrets should round-trip through Windows encryption."
 
 Initialize-RotationApi

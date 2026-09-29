@@ -11,6 +11,8 @@ $url = 'https://raw.githubusercontent.com/Visivalab/pi-kiosk/master/windows/setu
 Invoke-RestMethod -Uri $url | Invoke-Expression
 ```
 
+To register a totem on Windows later, without configuring the kiosk again, use the **Register totem** button in the wizard or run `windows\kiosk.cmd register-totem`.
+
 The repo must be **public**. Then, on the Pi:
 
     curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-setup/master/kiosk.sh | sudo bash

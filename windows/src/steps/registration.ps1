@@ -22,6 +22,57 @@ function ConvertTo-KioskScreenReport {
     })
 }
 
+function Get-KioskJsonValue {
+    param([object] $Object, [string] $Name, $Default)
+
+    if (-not $Object) { return $Default }
+    if ($Object.PSObject.Properties.Name -notcontains $Name) { return $Default }
+    $value = $Object.$Name
+    if ($null -eq $value) { return $Default }
+    $value
+}
+
+function Get-KioskRegistrationDisplays {
+    $state = Get-KioskState
+    if (-not $state) { return $null }
+    $entries = @(Get-KioskJsonValue $state "displays" @())
+    if ($entries.Count -eq 0) { return $null }
+    @($entries | ForEach-Object {
+        [pscustomobject]@{
+            Number     = [int] (Get-KioskJsonValue $_ "number" 0)
+            DeviceName = [string] (Get-KioskJsonValue $_ "deviceName" "")
+            Type       = [string] (Get-KioskJsonValue $_ "type" "video")
+            Rotation   = [string] (Get-KioskJsonValue $_ "rotation" "none")
+            Source     = [string] (Get-KioskJsonValue $_ "source" "")
+            Port       = [int] (Get-KioskJsonValue $_ "port" 0)
+            Audio      = [bool] (Get-KioskJsonValue $_ "audio" $false)
+        }
+    })
+}
+
+function Register-KioskTotemNow {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string] $Name,
+        [AllowEmptyString()][string] $Description = "",
+        [AllowEmptyString()][string] $Location = "",
+        [AllowEmptyString()][string] $TotemType = ""
+    )
+
+    $displays = Get-KioskRegistrationDisplays
+    if ($displays) {
+        Write-KioskDone "reusing the kiosk setup saved on this PC: $($displays.Count) screen(s)."
+    } else {
+        if (-not $TotemType) {
+            throw "This PC has no saved kiosk setup, so the totem type must be given."
+        }
+        $displays = @(@(Get-KioskDisplays) | ForEach-Object { New-KioskDisplayPlan $_ -Type $TotemType })
+        Write-KioskDone "no kiosk setup saved on this PC, so registering $($displays.Count) detected screen(s) as $TotemType."
+    }
+    Register-KioskTotem -TotemType $displays[0].Type -Displays $displays `
+        -Name $Name -Description $Description -Location $Location
+}
+
 function Install-KioskStatusReporter {
     param([string] $Endpoint, [string] $Token, [object[]] $Displays)
 

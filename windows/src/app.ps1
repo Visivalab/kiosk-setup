@@ -130,11 +130,37 @@ function Invoke-KioskWizard {
     Invoke-KioskPlan $plan -PromptFinalAction
 }
 
+function Invoke-KioskRegisterTotemCommand {
+    $script:SharedConfig = Get-KioskSharedConfig
+    $type = ""
+    if (-not (Get-KioskRegistrationDisplays)) {
+        Write-Host "This PC has no saved kiosk setup, so the totem type cannot be reused."
+        Write-Host ""
+        $projectChoices = $script:SharedConfig.choices.project
+        $index = Read-KioskChoice $script:SharedConfig.prompts.totemType @($projectChoices.webapp, $projectChoices.video)
+        $type = @("webapp", "video")[$index]
+    }
+    $name = Read-KioskRequired $script:SharedConfig.prompts.totemName
+    $description = (Read-Host $script:SharedConfig.prompts.totemDescription).Trim()
+    $location = (Read-Host $script:SharedConfig.prompts.totemLocation).Trim()
+    Register-KioskTotemNow -Name $name -Description $description -Location $location -TotemType $type
+    Show-KioskSummary
+}
+
 function Invoke-KioskMain {
+    param([AllowEmptyString()][string] $Command = "")
+
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         if (-not (Test-KioskAdministrator)) {
             throw "Run Windows Terminal as Administrator. Nothing was changed."
+        }
+        if ($Command) {
+            if ($Command -ne "register-totem") {
+                throw "Unknown command: $Command. The only command is register-totem."
+            }
+            Invoke-KioskRegisterTotemCommand
+            return 0
         }
         $displays = @(Get-KioskDisplays)
         if ($displays.Count -eq 0) { throw "No active displays were detected." }

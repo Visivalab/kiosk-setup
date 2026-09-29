@@ -30,5 +30,5 @@ foreach ($file in @(
 }
 
 if ($MyInvocation.InvocationName -ne ".") {
-    exit (Invoke-KioskMain)
+    exit (Invoke-KioskMain -Command $Command)
 }

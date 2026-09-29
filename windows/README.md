@@ -69,6 +69,16 @@ RustDesk and VLC are installed with `winget` when missing. Webapps are served on
 
 Nothing is applied until every answer validates, so a bad link on the second screen cannot leave the first one half-configured.
 
+## Register a totem later
+
+Registration is also available on its own, without configuring the kiosk again. The visual wizard has a **Register totem** button: fill in the Registration group and select it. From a terminal:
+
+```bat
+windows\kiosk.cmd register-totem
+```
+
+Either way it reuses what `kiosk-state.json` already knows about this PC — every screen, its type, and which one carries the audio — so the record matches the running setup. On a PC that was never configured it falls back to the detected displays and asks for the totem type. The saved RustDesk ID and password are reused when they exist, and the five-minute status reporter is installed as usual. Nothing about the kiosk setup itself is touched.
+
 ## Audio
 
 The PC has one set of speakers, so only one screen plays sound and the rest run with `--no-audio`.
@@ -93,7 +103,7 @@ The Windows password prompt accepts an empty value only for a local account that
 
 - `kiosk-gui.cmd` launches the portable visual wizard and requests administrator access.
 - `kiosk-gui.ps1` renders the native Windows UI and runs setup in the background.
-- `kiosk.ps1` loads the original console wizard and exits with its result.
+- `kiosk.ps1` loads the original console wizard and exits with its result. It takes one optional command, `register-totem`.
 - `cleanup.ps1` removes the persistent Windows kiosk configuration owned by this project.
 - `src/app.ps1` builds the setup plan and applies it in one ordered pass.
 - `src/plan.ps1` defines the plan and the single validation used by both the console and the visual wizard.

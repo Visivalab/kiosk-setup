@@ -1,4 +1,4 @@
-param([string] $ApplyConfig = "", [switch] $Cleanup)
+param([string] $ApplyConfig = "", [string] $RegisterConfig = "", [switch] $Cleanup)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -59,6 +59,26 @@ function Invoke-KioskGuiSetup {
         $config = Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
         $plan = ConvertFrom-KioskGuiConfig $config (Get-KioskDisplays)
         Invoke-KioskPlan $plan
+        return 0
+    } catch {
+        [Console]::Error.WriteLine($_.Exception.Message)
+        return 1
+    } finally {
+        Remove-Item -Force $ConfigPath -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-KioskGuiRegister {
+    param([Parameter(Mandatory = $true)][string] $ConfigPath)
+    try {
+        if (-not (Test-KioskAdministrator)) { throw "Administrator access is required." }
+        $script:SharedConfig = Get-KioskSharedConfig
+        $config = Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
+        Register-KioskTotemNow -Name ([string] $config.totemName) `
+            -Description ([string] $config.totemDescription) `
+            -Location ([string] $config.totemLocation) `
+            -TotemType ([string] $config.totemType)
+        Show-KioskSummary
         return 0
     } catch {
         [Console]::Error.WriteLine($_.Exception.Message)
@@ -360,6 +380,14 @@ function Show-KioskGui {
     $remove.AccessibleDescription = "Undo the kiosk configuration on this PC."
     $buttons.Controls.Add($remove)
 
+    $registerOnly = [Windows.Forms.Button]::new()
+    $registerOnly.Text = "Register totem"
+    $registerOnly.AutoSize = $true
+    $registerOnly.MinimumSize = [Drawing.Size]::new(140, 38)
+    $registerOnly.Margin = [Windows.Forms.Padding]::new(8, 0, 0, 0)
+    $registerOnly.AccessibleDescription = "Register this totem without configuring the kiosk again."
+    $buttons.Controls.Add($registerOnly)
+
     Add-KioskGuiRow $root $buttons
     $form.AcceptButton = $apply
 
@@ -402,7 +430,11 @@ function Show-KioskGui {
             $timer.Stop()
             $script:GuiProcess.WaitForExit()
             $errorText = if (Test-Path $script:GuiStderr) { Get-Content -Raw $script:GuiStderr } else { "" }
-            $what = if ($script:GuiOperation -eq "cleanup") { "Cleanup" } else { "Setup" }
+            $what = switch ($script:GuiOperation) {
+                "cleanup" { "Cleanup" }
+                "registration" { "Registration" }
+                default { "Setup" }
+            }
             if ($script:GuiProcess.ExitCode -eq 0) {
                 $status.AppendText("`r`n$what completed.")
                 [void] [Windows.Forms.MessageBox]::Show("$what completed.", "Kiosk setup", "OK", "Information")
@@ -414,6 +446,7 @@ function Show-KioskGui {
             $script:GuiProcess = $null
             $apply.Enabled = $true
             $remove.Enabled = $true
+            $registerOnly.Enabled = $true
         }
     })
 
@@ -504,6 +537,40 @@ function Show-KioskGui {
         $timer.Start()
     })
 
+    $registerOnly.Add_Click({
+        if (-not $registerTotem.Checked -or [string]::IsNullOrWhiteSpace($totemName.Text)) {
+            $message = "Turn on Register this totem and enter a name first."
+            $status.Text = $message
+            [void] [Windows.Forms.MessageBox]::Show($message, "Check the settings", "OK", "Warning")
+            return
+        }
+        $question = "Register '$($totemName.Text.Trim())' for $env:COMPUTERNAME now?`r`n`r`n" +
+            "This sends the machine details to the configured backend and installs the status reporter. " +
+            "The kiosk setup on this PC is not changed."
+        if ([Windows.Forms.MessageBox]::Show($question, "Register totem", "YesNo", "Question") -ne "Yes") { return }
+
+        $apply.Enabled = $false
+        $remove.Enabled = $false
+        $registerOnly.Enabled = $false
+        $status.Text = "Registering the totem..."
+        $script:GuiWork = Join-Path ([IO.Path]::GetTempPath()) ("pi-kiosk-gui-" + [guid]::NewGuid())
+        New-Item -ItemType Directory -Path $script:GuiWork | Out-Null
+        $registerPath = Join-Path $script:GuiWork "register.json"
+        $fallbackType = if ($multiple) { "video" } else { @("webapp", "video")[$sections[0].Type.SelectedIndex] }
+        @{
+            totemName = $totemName.Text.Trim()
+            totemDescription = $totemDescription.Text.Trim()
+            totemLocation = $totemLocation.Text.Trim()
+            totemType = $fallbackType
+        } | ConvertTo-Json | Set-Content -Encoding UTF8 $registerPath
+        $script:GuiOperation = "registration"
+        $script:GuiStdout = Join-Path $script:GuiWork "setup.log"
+        $script:GuiStderr = Join-Path $script:GuiWork "error.log"
+        $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -RegisterConfig `"$registerPath`""
+        $script:GuiProcess = Start-Process powershell.exe -ArgumentList $arguments -WindowStyle Hidden -RedirectStandardOutput $script:GuiStdout -RedirectStandardError $script:GuiStderr -PassThru
+        $timer.Start()
+    })
+
     $form.Add_FormClosing({
         param($sender, $eventArgs)
         if ($script:GuiProcess -and -not $script:GuiProcess.HasExited) {
@@ -525,6 +592,7 @@ function Invoke-KioskGuiMain {
     if (-not (Test-KioskAdministrator)) {
         $arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`""
         if ($ApplyConfig) { $arguments += " -ApplyConfig `"$ApplyConfig`"" }
+        if ($RegisterConfig) { $arguments += " -RegisterConfig `"$RegisterConfig`"" }
         if ($Cleanup) { $arguments += " -Cleanup" }
         try {
             $elevated = Start-Process powershell.exe -Verb RunAs -ArgumentList $arguments -PassThru
@@ -536,6 +604,7 @@ function Invoke-KioskGuiMain {
         }
     }
     if ($Cleanup) { return Invoke-KioskGuiCleanup }
+    if ($RegisterConfig) { return Invoke-KioskGuiRegister $RegisterConfig }
     if ($ApplyConfig) { return Invoke-KioskGuiSetup $ApplyConfig }
     try { Show-KioskGui }
     catch {

@@ -160,6 +160,32 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("kiosk_running", status)
         self.assertIn("webapp_running", status)
 
+    def test_totem_can_be_registered_on_its_own(self):
+        entry = read("kiosk.ps1")
+        app = read("src", "app.ps1")
+        registration = read("src", "steps", "registration.ps1")
+        gui = read("kiosk-gui.ps1")
+        cmd = (WINDOWS / "kiosk.cmd").read_text(encoding="utf-8")
+
+        self.assertIn("Invoke-KioskMain -Command $Command", entry)
+        self.assertIn("%*", cmd)
+        self.assertIn("register-totem", app)
+        self.assertIn("Unknown command", app)
+        self.assertIn("function Register-KioskTotemNow", registration)
+        self.assertIn("function Get-KioskRegistrationDisplays", registration)
+        self.assertIn("Get-KioskState", registration)
+        self.assertIn("[string] $RegisterConfig", gui)
+        self.assertIn("function Invoke-KioskGuiRegister", gui)
+        self.assertIn('$registerOnly.Text = "Register totem"', gui)
+
+    def test_standalone_registration_does_not_reconfigure_the_kiosk(self):
+        registration = read("src", "steps", "registration.ps1")
+
+        standalone = registration[registration.index("function Register-KioskTotemNow") :]
+        standalone = standalone[: standalone.index("function Install-KioskStatusReporter")]
+        for forbidden in ("Set-KioskRotation", "Install-KioskVideo", "Install-KioskWebApp", "Set-KioskStartup"):
+            self.assertNotIn(forbidden, standalone)
+
     def test_gui_can_remove_the_kiosk_setup(self):
         gui = read("kiosk-gui.ps1")
 
