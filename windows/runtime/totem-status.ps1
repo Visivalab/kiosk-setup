@@ -34,7 +34,7 @@ foreach ($screen in $configured) {
     $running = if ($screen.type -eq "webapp") { $webapp } else { Test-KioskPlayer $stateDir ([int] $screen.number) }
     $screens += [ordered]@{
         number = [int] $screen.number
-        totem_type = [string] $screen.type
+        type = [string] $screen.type
         kiosk_running = [bool] $running
         webapp_running = [bool] $webapp
     }
