@@ -29,7 +29,7 @@ function Write-KioskOrchestrator {
 
     $header = @(
         '$ErrorActionPreference = "Stop"',
-        ("`$items = @(ConvertFrom-Json '{0}')" -f $json),
+        ("`$items = @((ConvertFrom-Json '{0}') | ForEach-Object {{ `$_ }})" -f $json),
         ("`$vlc = '{0}'" -f $vlc.Replace("'", "''")),
         ("`$stateDir = '{0}'" -f $stateDir.Replace("'", "''")),
         ("`$audioDevice = '{0}'" -f $AudioDevice.Replace("'", "''")),
@@ -46,7 +46,7 @@ function Get-KioskScreenNumber {
     for ($index = 0; $index -lt $screens.Count; $index++) {
         if ($screens[$index].DeviceName -eq $DeviceName) { return $index }
     }
-    0
+    throw "Configured display $DeviceName is no longer part of the extended desktop. Check Windows display settings."
 }
 
 function Test-KioskAudioDevice {
@@ -69,7 +69,7 @@ function Start-KioskPlayer {
         return Start-Process powershell.exe -ArgumentList $arguments -PassThru
     }
     $arguments = @(
-        "--fullscreen", "--loop", "--no-video-title-show", "--no-qt-fs-controller", "--mouse-hide-timeout=0",
+        "--no-one-instance", "--fullscreen", "--loop", "--no-video-title-show", "--no-qt-fs-controller", "--mouse-hide-timeout=0",
         ("--qt-fullscreen-screennumber={0}" -f (Get-KioskScreenNumber $Item.device))
     )
     if ($Item.audio) {
@@ -82,7 +82,8 @@ function Start-KioskPlayer {
     if ($Paused) {
         $arguments += @("--start-paused", "--extraintf", "rc", "--rc-host", ("127.0.0.1:{0}" -f $Item.rcPort))
     }
-    $arguments += $Item.path
+    # Start-Process joins ArgumentList with spaces; quote the path for Windows command-line parsing.
+    $arguments += ('"{0}"' -f $Item.path)
     Start-Process -FilePath $vlc -ArgumentList $arguments -PassThru
 }
 
@@ -117,6 +118,9 @@ function Connect-KioskPlayers {
     $clients
 }
 
+$failureLog = Join-Path $stateDir "kiosk-start-error.log"
+Remove-Item $failureLog -Force -ErrorAction SilentlyContinue
+try {
 $videos = @($items | Where-Object { $_.type -eq "video" })
 $synchronised = $videos.Count -gt 1
 $started = @()
@@ -147,6 +151,12 @@ if ($synchronised) {
 
 $ids = @($started | ForEach-Object { $_.Process.Id })
 if ($ids.Count -gt 0) { Wait-Process -Id $ids }
+} catch {
+    $details = $_ | Format-List * -Force | Out-String
+    $details | Set-Content -Encoding UTF8 $failureLog
+    [Console]::Error.WriteLine("Kiosk launcher failed. See $failureLog`r`n$details")
+    exit 1
+}
 '@
 
     $launcher = Join-Path $bin "kiosk-start.ps1"

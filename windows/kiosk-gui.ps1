@@ -438,11 +438,15 @@ function Show-KioskGui {
             if ($script:GuiProcess.ExitCode -eq 0) {
                 $status.AppendText("`r`n$what completed.")
                 [void] [Windows.Forms.MessageBox]::Show("$what completed.", "Kiosk setup", "OK", "Information")
+                Remove-Item -Recurse -Force $script:GuiWork -ErrorAction SilentlyContinue
             } else {
+                if (-not $errorText) {
+                    $errorText = "$what exited with code $($script:GuiProcess.ExitCode) without an error message."
+                }
+                $errorText += "`r`nLogs saved in $script:GuiWork"
                 $status.AppendText("`r`nERROR: $errorText")
                 [void] [Windows.Forms.MessageBox]::Show("$what failed. $errorText", "Kiosk setup", "OK", "Error")
             }
-            Remove-Item -Recurse -Force $script:GuiWork -ErrorAction SilentlyContinue
             $script:GuiProcess = $null
             $apply.Enabled = $true
             $remove.Enabled = $true

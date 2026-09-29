@@ -208,6 +208,8 @@ function Get-KioskRoot { $runtimeRoot }
 try {
     $launcher = Write-WebRuntime $runtimeRoot (Join-Path $runtimeRoot "app") 8080
     $twoVideos.Displays[0].Audio = $true
+    $twoVideos.Displays[0].Path = 'C:\Videos\first clip.mp4'
+    $twoVideos.Displays[1].Path = 'C:\Videos\second clip.mp4'
     $orchestrator = Write-KioskOrchestrator -Displays $twoVideos.Displays -AudioDevice "{0.0.0.00000000}.{abc}"
     foreach ($file in @(
         $launcher,
@@ -221,8 +223,34 @@ try {
         Assert-Equal 0 $errors.Count "Generated runtime script $file should parse."
     }
     $generated = Get-Content -Raw $orchestrator
+    $header = $generated.Split(@('Add-Type -AssemblyName System.Windows.Forms'), [StringSplitOptions]::None)[0]
+    Invoke-Expression $header
+    Assert-Equal 2 $items.Count "The generated launcher should parse two videos as two separate items."
+    Assert-Equal 1 $items[0].number "The first player should receive only the first display."
+    Assert-Equal 2 $items[1].number "The second player should receive only the second display."
+    $launcherAst = [Management.Automation.Language.Parser]::ParseInput($generated, [ref] $tokens, [ref] $errors)
+    $playerFunction = $launcherAst.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Start-KioskPlayer'
+    }, $true)
+    Invoke-Expression $playerFunction.Extent.Text
+    function Get-KioskScreenNumber { param([string] $DeviceName) if ($DeviceName -eq 'primary') { 0 } else { 1 } }
+    function Test-KioskAudioDevice { param([string] $Id) $false }
+    function Start-Process {
+        param([string] $FilePath, [string[]] $ArgumentList, [switch] $PassThru)
+        $script:playerArgs = $ArgumentList
+        [pscustomobject]@{ Id = 42 }
+    }
+    [void] (Start-KioskPlayer $items[0] $true)
+    Assert-Equal '"C:\Videos\first clip.mp4"' $script:playerArgs[-1] "Paths with spaces must stay one VLC argument."
+    Assert-Equal $true ($script:playerArgs -contains '--no-one-instance') "Each display needs an independent VLC process."
+    Assert-Equal $true ($script:playerArgs -contains '--qt-fullscreen-screennumber=0') "The first video goes to the first screen."
+    [void] (Start-KioskPlayer $items[1] $true)
+    Assert-Equal '"C:\Videos\second clip.mp4"' $script:playerArgs[-1] "The second player gets only its video."
+    Assert-Equal $true ($script:playerArgs -contains '--qt-fullscreen-screennumber=1') "The second video goes to the second screen."
     Assert-Match "qt-fullscreen-screennumber" $generated "The orchestrator should place each video on its own screen."
     Assert-Match "start-paused" $generated "Several videos should be held until every player is ready."
+    Assert-Match "kiosk-start-error.log" $generated "Launcher errors should be saved even when started in the background."
     Assert-Match "primary" $generated "The orchestrator should target each configured display by name."
     Assert-Match "left" $generated "The orchestrator should target each configured display by name."
     Assert-Match "--no-audio" $generated "Screens without the audio should be muted."

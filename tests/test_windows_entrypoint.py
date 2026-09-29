@@ -18,6 +18,13 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("powershell.exe", script.lower())
         self.assertIn('"%~dp0kiosk.ps1"', script)
 
+    def test_gui_keeps_diagnostics_when_worker_fails_without_stderr(self):
+        gui = read("kiosk-gui.ps1")
+
+        self.assertIn('if (-not $errorText)', gui)
+        self.assertIn('Logs saved in $script:GuiWork', gui)
+        self.assertIn('if ($script:GuiProcess.ExitCode -eq 0)', gui)
+
     def test_portable_gui_uses_native_windows_controls(self):
         cmd = (WINDOWS / "kiosk-gui.cmd").read_text(encoding="utf-8")
         gui = read("kiosk-gui.ps1")
