@@ -14,7 +14,6 @@ foreach ($file in @(
     "src\ui.ps1",
     "src\sources.ps1",
     "src\steps\rotation.ps1",
-    "src\steps\touch.ps1",
     "src\steps\nosleep.ps1",
     "src\steps\autologin.ps1",
     "src\steps\rustdesk.ps1",

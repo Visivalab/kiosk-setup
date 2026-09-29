@@ -9,7 +9,6 @@ function Invoke-KioskWizard {
     $rotationIndex = Read-KioskChoice $script:SharedConfig.prompts.screenRotation @($rotationChoices.none, $rotationChoices.clockwise, $rotationChoices.counterclockwise)
     $rotation = @("none", "clockwise", "counterclockwise")[$rotationIndex]
     Set-KioskRotation $Display $rotation
-    Test-KioskTouchscreen
     Set-KioskNoSleep
     Enable-KioskAutologon
     $rustdeskPassword = Read-KioskSecret $script:SharedConfig.prompts.rustdeskPassword

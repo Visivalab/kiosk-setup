@@ -25,13 +25,13 @@ function Read-KioskRequired {
 }
 
 function Read-KioskSecret {
-    param([string] $Prompt)
+    param([string] $Prompt, [switch] $AllowEmpty)
     while ($true) {
         $secure = Read-Host $Prompt -AsSecureString
         $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
         try { $value = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
         finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
-        if ($value) { return $value }
+        if ($value -or $AllowEmpty) { return $value }
         Write-Host "WARN: $Prompt cannot be empty." -ForegroundColor Yellow
     }
 }

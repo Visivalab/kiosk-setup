@@ -24,9 +24,9 @@ class WindowsEntrypointTests(unittest.TestCase):
         app = (WINDOWS / "src" / "app.ps1").read_text(encoding="utf-8")
 
         self.assertIn("Invoke-KioskWizard", app)
+        self.assertNotIn("Test-KioskTouchscreen", app)
         for function in (
             "Set-KioskRotation",
-            "Test-KioskTouchscreen",
             "Set-KioskNoSleep",
             "Enable-KioskAutologon",
             "Install-KioskRustDesk",
@@ -40,7 +40,6 @@ class WindowsEntrypointTests(unittest.TestCase):
         steps = WINDOWS / "src" / "steps"
         for name in (
             "rotation",
-            "touch",
             "nosleep",
             "autologin",
             "rustdesk",
@@ -50,6 +49,25 @@ class WindowsEntrypointTests(unittest.TestCase):
             "final-action",
         ):
             self.assertTrue((steps / f"{name}.ps1").is_file(), name)
+        self.assertFalse((steps / "touch.ps1").exists())
+
+    def test_autologon_supports_local_accounts_without_passwords(self):
+        ui = (WINDOWS / "src" / "ui.ps1").read_text(encoding="utf-8")
+        autologon = (WINDOWS / "src" / "steps" / "autologin.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("[switch] $AllowEmpty", ui)
+        self.assertIn("-AllowEmpty", autologon)
+        self.assertIn("DefaultUserName", autologon)
+        self.assertIn("DefaultDomainName", autologon)
+        self.assertIn("DefaultPassword", autologon)
+        self.assertIn("AutoAdminLogon", autologon)
+        self.assertIn("$env:COMPUTERNAME", autologon)
+        self.assertLess(
+            autologon.index("if (-not $password)"),
+            autologon.index("Downloading Microsoft Sysinternals Autologon"),
+        )
 
     def test_remote_setup_downloads_one_repository_archive(self):
         setup = (WINDOWS / "setup.ps1").read_text(encoding="utf-8")
