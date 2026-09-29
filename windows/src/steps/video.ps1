@@ -19,6 +19,15 @@ function Install-Vlc {
     $vlc
 }
 
+function Assert-KioskVideoContentType {
+    param([AllowEmptyString()][string] $ContentType)
+
+    # Dropbox serves some valid MP4 downloads as application/binary.
+    if ($ContentType -and $ContentType -notmatch '^(video/[^;\s]+|application/(octet-stream|mp4|binary))(\s*;|$)') {
+        throw "Dropbox did not return a video file. Got Content-Type $ContentType."
+    }
+}
+
 function Install-KioskVideo {
     param([Parameter(Mandatory = $true)][object] $Display)
 
@@ -32,10 +41,7 @@ function Install-KioskVideo {
     $download = Join-Path $next "video-download"
     Write-KioskProgress "Downloading video for display $($Display.Number)"
     $response = Invoke-WebRequest -UseBasicParsing -Uri $Display.Url -OutFile $download -PassThru
-    $type = [string] $response.Headers["Content-Type"]
-    if ($type -and $type -notmatch "^(video/|application/octet-stream|application/mp4)") {
-        throw "Dropbox did not return a video file. Got Content-Type $type."
-    }
+    Assert-KioskVideoContentType ([string] $response.Headers["Content-Type"])
     $name = [IO.Path]::GetFileName(([uri] $Display.Url).AbsolutePath)
     $disposition = [string] $response.Headers["Content-Disposition"]
     if ($disposition -match "filename\*=UTF-8''([^;]+)") { $name = [uri]::UnescapeDataString($matches[1].Trim('"')) }

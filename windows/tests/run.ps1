@@ -73,6 +73,14 @@ Assert-Throws `
     "Full webapp URLs should be rejected."
 $video = Normalize-VideoSource "https://www.dropbox.com/s/demo/video.mp4?dl=0"
 Assert-Equal "dl=1" ([uri] $video).Query.TrimStart("?") "Dropbox links should request a direct download."
+$sclVideo = Normalize-VideoSource "https://www.dropbox.com/scl/fi/abc/video.mp4?rlkey=key&st=token&dl=0"
+Assert-Match "rlkey=key&st=token&dl=1" $sclVideo "SCL shared links should preserve their access parameters."
+Assert-KioskVideoContentType "application/binary"
+Assert-KioskVideoContentType "video/mp4"
+Assert-KioskVideoContentType "application/binary; charset=utf-8"
+Assert-Throws { Assert-KioskVideoContentType "application/binary-malformed" } "Other MIME types should not match the generic binary exception."
+Assert-Throws { Assert-KioskVideoContentType "text/html" } "Dropbox HTML pages should be rejected."
+Assert-Throws { Assert-KioskVideoContentType "application/json" } "Dropbox JSON responses should be rejected."
 Assert-Throws `
     { Normalize-VideoSource "https://example.test/video.mp4" } `
     "Non-Dropbox video URLs should be rejected."
