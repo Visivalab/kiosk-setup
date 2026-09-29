@@ -36,14 +36,24 @@ function Get-KioskStatusEndpoint {
 }
 
 function Register-KioskTotem {
-    param([string] $TotemType)
-    if (-not (Read-KioskConfirmation $script:SharedConfig.prompts.registerTotem $true)) {
-        Write-KioskDone "skipped totem registration."
-        return
+    [CmdletBinding()]
+    param(
+        [string] $TotemType,
+        [string] $Name,
+        [string] $Description = "",
+        [string] $Location = ""
+    )
+    if (-not $PSBoundParameters.ContainsKey("Name")) {
+        if (-not (Read-KioskConfirmation $script:SharedConfig.prompts.registerTotem $true)) {
+            Write-KioskDone "skipped totem registration."
+            return
+        }
+        $Name = Read-KioskRequired $script:SharedConfig.prompts.totemName
+        $Description = (Read-Host $script:SharedConfig.prompts.totemDescription).Trim()
+        $Location = (Read-Host $script:SharedConfig.prompts.totemLocation).Trim()
+    } elseif (-not $Name.Trim()) {
+        throw "Totem name cannot be empty."
     }
-    $name = Read-KioskRequired $script:SharedConfig.prompts.totemName
-    $description = (Read-Host $script:SharedConfig.prompts.totemDescription).Trim()
-    $location = (Read-Host $script:SharedConfig.prompts.totemLocation).Trim()
     $credentials = Get-SavedRustDesk
     $machineId = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Cryptography").MachineGuid
     $endpoint = if ($env:PI_KIOSK_REGISTER_TOTEM_URL) { $env:PI_KIOSK_REGISTER_TOTEM_URL } else { $script:SharedConfig.registerTotemUrl }

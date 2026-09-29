@@ -14,10 +14,10 @@ try {
     Write-Host "[....] Downloading Windows kiosk setup"
     Invoke-WebRequest -UseBasicParsing -Uri $archiveUrl -OutFile $archive
     Expand-Archive -Path $archive -DestinationPath $work -Force
-    $entry = Get-ChildItem -Recurse -File -Filter kiosk.ps1 $work |
-        Where-Object { $_.FullName -like "*\windows\kiosk.ps1" } |
+    $entry = Get-ChildItem -Recurse -File -Filter kiosk-gui.ps1 $work |
+        Where-Object { $_.FullName -like "*\windows\kiosk-gui.ps1" } |
         Select-Object -First 1
-    if (-not $entry) { throw "Downloaded archive did not contain windows\kiosk.ps1." }
+    if (-not $entry) { throw "Downloaded archive did not contain windows\kiosk-gui.ps1." }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $entry.FullName
     if ($LASTEXITCODE -ne 0) { throw "Windows kiosk setup failed with exit code $LASTEXITCODE." }
 } finally {

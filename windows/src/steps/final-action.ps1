@@ -6,21 +6,33 @@ function Show-KioskSummary {
 }
 
 function Invoke-KioskFinalAction {
-    param([object] $Kiosk)
-    if ($Kiosk.Type -eq "webapp") {
-        $choice = Read-KioskChoice $script:SharedConfig.prompts.nextAction @(
-            "Simulate autorun - just for testing",
-            "Reboot - final production",
-            "Close - keep the app server running without opening Edge"
-        )
-        if ($choice -eq 0) { Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Kiosk.Launcher)`""; Write-KioskDone "launched the webapp kiosk for testing." }
-        elseif ($choice -eq 1) { Restart-Computer -Force }
-        else { Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Kiosk.Launcher)`" -ServerOnly" -WindowStyle Hidden; Write-KioskDone "the app is live on http://127.0.0.1:8080 without opening Edge." }
+    [CmdletBinding()]
+    param([object] $Kiosk, [string] $Action)
+
+    if (-not $PSBoundParameters.ContainsKey("Action")) {
+        if ($Kiosk.Type -eq "webapp") {
+            $choice = Read-KioskChoice $script:SharedConfig.prompts.nextAction @(
+                "Simulate autorun - just for testing",
+                "Reboot - final production",
+                "Close - keep the app server running without opening Edge"
+            )
+        } else {
+            $videoChoices = $script:SharedConfig.choices.videoAction
+            $choice = Read-KioskChoice $script:SharedConfig.prompts.videoNextAction @($videoChoices.launch, $videoChoices.reboot, $videoChoices.nothing)
+        }
+        $Action = @("launch", "reboot", "nothing")[$choice]
+    }
+    if ($Action -notin @("launch", "reboot", "nothing")) { throw "Unknown final action: $Action" }
+
+    if ($Action -eq "launch") {
+        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Kiosk.Launcher)`""
+        Write-KioskDone "launching the $($Kiosk.Type) kiosk now for testing."
+    } elseif ($Action -eq "reboot") {
+        Restart-Computer -Force
+    } elseif ($Kiosk.Type -eq "webapp") {
+        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Kiosk.Launcher)`" -ServerOnly" -WindowStyle Hidden
+        Write-KioskDone "the app is live on http://127.0.0.1:8080 without opening Edge."
     } else {
-        $videoChoices = $script:SharedConfig.choices.videoAction
-        $choice = Read-KioskChoice $script:SharedConfig.prompts.videoNextAction @($videoChoices.launch, $videoChoices.reboot, $videoChoices.nothing)
-        if ($choice -eq 0) { Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Kiosk.Launcher)`""; Write-KioskDone "launching video now for testing." }
-        elseif ($choice -eq 1) { Restart-Computer -Force }
-        else { Write-KioskDone "doing nothing now." }
+        Write-KioskDone "doing nothing now."
     }
 }

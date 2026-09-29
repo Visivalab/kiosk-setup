@@ -1,6 +1,6 @@
 # Windows kiosk config
 
-The Windows wizard currently runs the complete single-display setup. When more than one active display is detected it lists them and exits without changing the PC; per-display setup is the next milestone.
+The portable visual wizard runs the complete single-display setup using Windows' built-in controls. It needs no installation or extra runtime. When more than one active display is detected it exits without changing the PC; per-display setup is the next milestone.
 
 ## Run directly from GitHub
 
@@ -12,6 +12,16 @@ Invoke-RestMethod -Uri $url | Invoke-Expression
 ```
 
 The bootstrap downloads one repository archive so the wizard, its steps, runtime scripts, and shared configuration always use the same revision.
+
+## Run as a portable app
+
+Download and extract the repository ZIP, then double-click:
+
+```text
+windows\kiosk-gui.cmd
+```
+
+Accept the Windows administrator prompt. The visual wizard keeps passwords masked and encrypts them while handing setup work to the background process.
 
 ## Remove the kiosk configuration
 
@@ -26,7 +36,7 @@ Cleanup removes kiosk startup and status reporting, disables autologin, deletes 
 
 ## Run a local checkout
 
-From the repository root in an Administrator terminal:
+From the repository root, double-click `windows\kiosk-gui.cmd`, or run the original console wizard in an Administrator terminal:
 
 ```bat
 windows\kiosk.cmd
@@ -54,7 +64,9 @@ The Windows password prompt accepts an empty value only for a local account that
 
 ## Layout
 
-- `kiosk.ps1` loads the wizard and exits with its result.
+- `kiosk-gui.cmd` launches the portable visual wizard and requests administrator access.
+- `kiosk-gui.ps1` renders the native Windows UI and runs setup in the background.
+- `kiosk.ps1` loads the original console wizard and exits with its result.
 - `cleanup.ps1` removes the persistent Windows kiosk configuration owned by this project.
 - `src/app.ps1` defines the ordered wizard flow.
 - `src/steps/` contains one file per configuration concern.

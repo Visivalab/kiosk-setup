@@ -2,9 +2,9 @@
 
 Configuration tools for kiosk machines.
 
-The Pi subproject is an interactive first-boot wizard for Raspberry Pi OS (Bookworm / Trixie, labwc). The Windows subproject provides the equivalent setup for a single active display; multi-display configuration currently stops after listing the detected displays.
+The Pi subproject is an interactive first-boot wizard for Raspberry Pi OS (Bookworm / Trixie, labwc). The Windows subproject provides a portable visual wizard for the equivalent single-display setup; multi-display configuration currently stops after listing the detected displays.
 
-On Windows, open PowerShell as Administrator and run:
+On Windows, either extract the repository ZIP and double-click `windows\kiosk-gui.cmd`, or open PowerShell as Administrator and run:
 
 ```powershell
 $url = 'https://raw.githubusercontent.com/Visivalab/pi-kiosk/master/windows/setup.ps1'
@@ -127,7 +127,8 @@ URL is inferred from `PI_KIOSK_REGISTER_TOTEM_URL` by replacing the final
 - `pi/src/pi_kiosk/steps/` — one Pi module per concern (rotation, touch, nosleep, autologin, RustDesk, webapp kiosk).
 - `pi/src/pi_kiosk/host.py` — Pi system port. Tests use an in-memory fake.
 - `pi/src/pi_kiosk/linux.py` — the only Pi code that touches a real machine.
-- `windows/setup.ps1` — remote Windows bootstrap that downloads one repository archive.
+- `windows/kiosk-gui.cmd` — portable visual Windows launcher.
+- `windows/setup.ps1` — remote Windows bootstrap that downloads one repository archive and opens the visual wizard.
 - `windows/kiosk.ps1` — thin Windows entry point; steps live under `windows/src/steps/`.
 - `shared/kiosk.json` — service URLs and release settings shared by Pi and Windows.
 

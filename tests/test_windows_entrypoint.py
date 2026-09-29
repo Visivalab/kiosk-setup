@@ -13,6 +13,34 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("powershell.exe", script.lower())
         self.assertIn('"%~dp0kiosk.ps1"', script)
 
+    def test_portable_gui_uses_native_windows_controls(self):
+        cmd = (WINDOWS / "kiosk-gui.cmd").read_text(encoding="utf-8")
+        gui = (WINDOWS / "kiosk-gui.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("powershell.exe", cmd.lower())
+        self.assertIn('"%~dp0kiosk-gui.ps1"', cmd)
+        self.assertIn("System.Windows.Forms", gui)
+        self.assertIn("[Windows.Forms.Application]::Run", gui)
+        self.assertIn("UseSystemPasswordChar", gui)
+        self.assertIn("ConvertFrom-SecureString", gui)
+        self.assertIn("Invoke-KioskGuiSetup", gui)
+        for function in (
+            "Set-KioskRotation",
+            "Set-KioskNoSleep",
+            "Enable-KioskAutologon",
+            "Install-KioskRustDesk",
+            "Install-KioskWebApp",
+            "Install-KioskVideo",
+            "Register-KioskTotem",
+            "Invoke-KioskFinalAction",
+        ):
+            self.assertIn(function, gui)
+
+    def test_remote_setup_opens_the_visual_wizard(self):
+        setup = (WINDOWS / "setup.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("windows\\kiosk-gui.ps1", setup)
+
     def test_powershell_wizard_detects_all_active_displays(self):
         script = (WINDOWS / "src" / "steps" / "rotation.ps1").read_text(encoding="utf-8")
 
@@ -98,7 +126,7 @@ class WindowsEntrypointTests(unittest.TestCase):
 
         self.assertIn("archive/refs/heads/master.zip", setup)
         self.assertIn("Expand-Archive", setup)
-        self.assertIn("windows\\kiosk.ps1", setup)
+        self.assertIn("windows\\kiosk-gui.ps1", setup)
 
     def test_windows_has_a_dependency_free_display_test(self):
         script = (WINDOWS / "tests" / "run.ps1").read_text(encoding="utf-8")

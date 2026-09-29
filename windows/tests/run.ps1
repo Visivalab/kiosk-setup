@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "..\kiosk.ps1")
+. (Join-Path $PSScriptRoot "..\kiosk-gui.ps1")
 
 function Assert-Equal {
     param(
@@ -72,10 +73,22 @@ Assert-Equal `
     (Get-KioskStatusEndpoint "https://example.test/api/register-totem?old=1") `
     "Status reporting should replace the final registration path."
 
+$guiValues = [pscustomobject]@{
+    RustDeskPassword = "remote-secret"
+    ProjectType = "webapp"
+    Source = "screen/app.zip"
+    RegisterTotem = $true
+    TotemName = "Lobby"
+}
+Assert-Equal $null (Get-KioskGuiValidationError $guiValues) "Valid GUI settings should pass validation."
+$guiValues.RustDeskPassword = ""
+Assert-Equal "Enter a RustDesk password." (Get-KioskGuiValidationError $guiValues) "The GUI should require a RustDesk password."
+Assert-Equal "remote-secret" (Unprotect-KioskGuiSecret (Protect-KioskGuiSecret "remote-secret")) "GUI secrets should round-trip through Windows encryption."
+
 Initialize-RotationApi
 Assert-Equal 156 ([Runtime.InteropServices.Marshal]::SizeOf([type] [KioskDisplay+DEVMODE])) "The Windows display structure should have the native size."
 
-foreach ($file in @("cleanup.ps1", "cleanup-setup.ps1")) {
+foreach ($file in @("cleanup.ps1", "cleanup-setup.ps1", "kiosk-gui.ps1")) {
     $tokens = $null
     $errors = $null
     $path = Join-Path $PSScriptRoot "..\$file"

@@ -1,6 +1,11 @@
 function Enable-KioskAutologon {
-    $prompt = "Windows password for $env:USERDOMAIN\$env:USERNAME. Use the account password, not the PIN. Leave blank only if this local account has no password"
-    $password = Read-KioskSecret $prompt -AllowEmpty
+    [CmdletBinding()]
+    param([AllowEmptyString()][string] $Password)
+
+    if (-not $PSBoundParameters.ContainsKey("Password")) {
+        $prompt = "Windows password for $env:USERDOMAIN\$env:USERNAME. Use the account password, not the PIN. Leave blank only if this local account has no password"
+        $Password = Read-KioskSecret $prompt -AllowEmpty
+    }
     if (-not $password) {
         if ($env:USERDOMAIN -ne $env:COMPUTERNAME) {
             throw "A blank password can only be used with a local Windows account."
