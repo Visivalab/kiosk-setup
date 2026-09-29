@@ -1,4 +1,4 @@
-param([string] $ApplyConfig = "")
+param([string] $ApplyConfig = "", [switch] $Cleanup)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -66,6 +66,15 @@ function Invoke-KioskGuiSetup {
     } finally {
         Remove-Item -Force $ConfigPath -ErrorAction SilentlyContinue
     }
+}
+
+function Invoke-KioskGuiCleanup {
+    if (-not (Test-KioskAdministrator)) {
+        [Console]::Error.WriteLine("Administrator access is required.")
+        return 1
+    }
+    . (Join-Path $PSScriptRoot "cleanup.ps1")
+    Invoke-KioskCleanup
 }
 
 function Add-KioskGuiField {
@@ -328,13 +337,30 @@ function Show-KioskGui {
     $status.Margin = [Windows.Forms.Padding]::new(0, 0, 0, 12)
     Add-KioskGuiRow $root $status
 
+    $buttons = [Windows.Forms.FlowLayoutPanel]::new()
+    $buttons.FlowDirection = "RightToLeft"
+    $buttons.WrapContents = $false
+    $buttons.AutoSize = $true
+    $buttons.AutoSizeMode = "GrowAndShrink"
+    $buttons.Dock = "Top"
+    $buttons.Margin = [Windows.Forms.Padding]::new(0, 4, 0, 24)
+
     $apply = [Windows.Forms.Button]::new()
     $apply.Text = "Configure kiosk"
     $apply.AutoSize = $true
     $apply.MinimumSize = [Drawing.Size]::new(140, 38)
-    $apply.Anchor = "Right"
-    $apply.Margin = [Windows.Forms.Padding]::new(0, 4, 0, 24)
-    Add-KioskGuiRow $root $apply
+    $apply.Margin = [Windows.Forms.Padding]::new(8, 0, 0, 0)
+    $buttons.Controls.Add($apply)
+
+    $remove = [Windows.Forms.Button]::new()
+    $remove.Text = "Remove kiosk setup"
+    $remove.AutoSize = $true
+    $remove.MinimumSize = [Drawing.Size]::new(140, 38)
+    $remove.Margin = [Windows.Forms.Padding]::new(8, 0, 0, 0)
+    $remove.AccessibleDescription = "Undo the kiosk configuration on this PC."
+    $buttons.Controls.Add($remove)
+
+    Add-KioskGuiRow $root $buttons
     $form.AcceptButton = $apply
 
     if (-not $multiple) {
@@ -376,16 +402,18 @@ function Show-KioskGui {
             $timer.Stop()
             $script:GuiProcess.WaitForExit()
             $errorText = if (Test-Path $script:GuiStderr) { Get-Content -Raw $script:GuiStderr } else { "" }
+            $what = if ($script:GuiOperation -eq "cleanup") { "Cleanup" } else { "Setup" }
             if ($script:GuiProcess.ExitCode -eq 0) {
-                $status.AppendText("`r`nSetup completed.")
-                [void] [Windows.Forms.MessageBox]::Show("Kiosk setup completed.", "Kiosk setup", "OK", "Information")
+                $status.AppendText("`r`n$what completed.")
+                [void] [Windows.Forms.MessageBox]::Show("$what completed.", "Kiosk setup", "OK", "Information")
             } else {
                 $status.AppendText("`r`nERROR: $errorText")
-                [void] [Windows.Forms.MessageBox]::Show("Setup failed. $errorText", "Kiosk setup", "OK", "Error")
+                [void] [Windows.Forms.MessageBox]::Show("$what failed. $errorText", "Kiosk setup", "OK", "Error")
             }
             Remove-Item -Recurse -Force $script:GuiWork -ErrorAction SilentlyContinue
             $script:GuiProcess = $null
             $apply.Enabled = $true
+            $remove.Enabled = $true
         }
     })
 
@@ -446,9 +474,32 @@ function Show-KioskGui {
                 @{ number = $_.Number; deviceName = $_.DeviceName; rotation = $_.Rotation; type = $_.Type; source = $_.Source }
             })
         } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 $configPath
+        $script:GuiOperation = "setup"
         $script:GuiStdout = Join-Path $script:GuiWork "setup.log"
         $script:GuiStderr = Join-Path $script:GuiWork "error.log"
         $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -ApplyConfig `"$configPath`""
+        $script:GuiProcess = Start-Process powershell.exe -ArgumentList $arguments -WindowStyle Hidden -RedirectStandardOutput $script:GuiStdout -RedirectStandardError $script:GuiStderr -PassThru
+        $timer.Start()
+    })
+
+    $remove.Add_Click({
+        $warning = "This undoes the kiosk configuration on this PC: startup entry, status reporting, " +
+            "Windows autologin, the downloaded video and webapp files, the local web server reservation, " +
+            "and it turns every display back to 0 degrees.`r`n`r`n" +
+            "RustDesk, VLC, the power settings and the remote registration are left alone.`r`n`r`n" +
+            "Continue?"
+        $answer = [Windows.Forms.MessageBox]::Show($warning, "Remove kiosk setup", "YesNo", "Warning", "Button2")
+        if ($answer -ne "Yes") { return }
+
+        $apply.Enabled = $false
+        $remove.Enabled = $false
+        $status.Text = "Removing the kiosk configuration..."
+        $script:GuiWork = Join-Path ([IO.Path]::GetTempPath()) ("pi-kiosk-gui-" + [guid]::NewGuid())
+        New-Item -ItemType Directory -Path $script:GuiWork | Out-Null
+        $script:GuiOperation = "cleanup"
+        $script:GuiStdout = Join-Path $script:GuiWork "setup.log"
+        $script:GuiStderr = Join-Path $script:GuiWork "error.log"
+        $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Cleanup"
         $script:GuiProcess = Start-Process powershell.exe -ArgumentList $arguments -WindowStyle Hidden -RedirectStandardOutput $script:GuiStdout -RedirectStandardError $script:GuiStderr -PassThru
         $timer.Start()
     })
@@ -457,11 +508,12 @@ function Show-KioskGui {
         param($sender, $eventArgs)
         if ($script:GuiProcess -and -not $script:GuiProcess.HasExited) {
             $eventArgs.Cancel = $true
-            [void] [Windows.Forms.MessageBox]::Show("Setup is still running. Wait for it to finish before closing this window.", "Kiosk setup", "OK", "Information")
+            [void] [Windows.Forms.MessageBox]::Show("Work is still running. Wait for it to finish before closing this window.", "Kiosk setup", "OK", "Information")
         }
     })
 
     $script:GuiProcess = $null
+    $script:GuiOperation = "setup"
     $script:GuiWork = $null
     $script:GuiStdout = $null
     $script:GuiStderr = $null
@@ -473,6 +525,7 @@ function Invoke-KioskGuiMain {
     if (-not (Test-KioskAdministrator)) {
         $arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`""
         if ($ApplyConfig) { $arguments += " -ApplyConfig `"$ApplyConfig`"" }
+        if ($Cleanup) { $arguments += " -Cleanup" }
         try {
             $elevated = Start-Process powershell.exe -Verb RunAs -ArgumentList $arguments -PassThru
             $elevated.WaitForExit()
@@ -482,6 +535,7 @@ function Invoke-KioskGuiMain {
             return 1
         }
     }
+    if ($Cleanup) { return Invoke-KioskGuiCleanup }
     if ($ApplyConfig) { return Invoke-KioskGuiSetup $ApplyConfig }
     try { Show-KioskGui }
     catch {

@@ -27,6 +27,10 @@ Accept the Windows administrator prompt. The visual wizard keeps passwords maske
 
 ## Remove the kiosk configuration
 
+The visual wizard has a **Remove kiosk setup** button next to Configure kiosk. It asks for confirmation, then runs the same cleanup as the commands below and reports progress in the same box.
+
+Or, from a terminal:
+
 Open Windows Terminal **as Administrator**, then run:
 
 ```powershell

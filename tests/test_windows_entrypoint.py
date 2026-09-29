@@ -160,6 +160,24 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("kiosk_running", status)
         self.assertIn("webapp_running", status)
 
+    def test_gui_can_remove_the_kiosk_setup(self):
+        gui = read("kiosk-gui.ps1")
+
+        self.assertIn("[switch] $Cleanup", gui)
+        self.assertIn("function Invoke-KioskGuiCleanup", gui)
+        self.assertIn("Invoke-KioskCleanup", gui)
+        self.assertIn('$remove.Text = "Remove kiosk setup"', gui)
+        self.assertIn("$remove.Add_Click", gui)
+        self.assertLess(gui.index("if ($Cleanup)"), gui.index("if ($ApplyConfig) { return Invoke-KioskGuiSetup"))
+
+    def test_gui_asks_before_removing_the_kiosk_setup(self):
+        gui = read("kiosk-gui.ps1")
+
+        confirmation = gui[gui.index("$remove.Add_Click") : gui.index("$form.Add_FormClosing")]
+        self.assertIn('"Remove kiosk setup", "YesNo", "Warning", "Button2"', confirmation)
+        self.assertIn('if ($answer -ne "Yes") { return }', confirmation)
+        self.assertLess(confirmation.index("MessageBox"), confirmation.index("Start-Process"))
+
     def test_audio_is_routed_to_one_screen_and_one_output(self):
         audio = read("src", "steps", "audio.ps1")
         plan = read("src", "plan.ps1")
