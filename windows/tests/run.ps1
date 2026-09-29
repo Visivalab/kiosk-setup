@@ -16,6 +16,11 @@ function Assert-Equal {
     }
 }
 
+function Assert-Match {
+    param([string] $Pattern, [string] $Actual, [string] $Message)
+    if ($Actual -notmatch $Pattern) { throw "$Message Expected a match for '$Pattern', got '$Actual'." }
+}
+
 function Assert-Throws {
     param([scriptblock] $Action, [string] $Message)
     try { & $Action } catch { return }
@@ -47,6 +52,9 @@ Assert-Equal "left" $displays[1].DeviceName "Other displays should be ordered by
 Assert-Equal "right" $displays[2].DeviceName "Other displays should be ordered by position."
 Assert-Equal 1 $displays[0].Number "Display numbering should start at one."
 Assert-Equal 3 $displays[2].Number "Every display should receive a number."
+Assert-Equal 1 $displays[0].Index "The primary display keeps its Windows enumeration index."
+Assert-Equal 2 $displays[1].Index "Every display keeps its Windows enumeration index."
+Assert-Equal 0 $displays[2].Index "Every display keeps its Windows enumeration index."
 Assert-Equal `
     "1) primary - 1920x1080 at (0,0) - Primary" `
     (Format-KioskDisplay $displays[0]) `
@@ -73,16 +81,57 @@ Assert-Equal `
     (Get-KioskStatusEndpoint "https://example.test/api/register-totem?old=1") `
     "Status reporting should replace the final registration path."
 
-$guiValues = [pscustomobject]@{
-    RustDeskPassword = "remote-secret"
-    ProjectType = "webapp"
-    Source = "screen/app.zip"
-    RegisterTotem = $true
-    TotemName = "Lobby"
+$dropboxOne = "https://www.dropbox.com/s/one/one.mp4?dl=0"
+$dropboxTwo = "https://www.dropbox.com/s/two/two.mp4?dl=0"
+
+function New-TestPlan {
+    param([object[]] $PlannedDisplays)
+    New-KioskPlan -Displays $PlannedDisplays -RustDeskPassword "remote-secret" `
+        -Register $true -TotemName "Lobby" -FinalAction "launch"
 }
-Assert-Equal $null (Get-KioskGuiValidationError $guiValues) "Valid GUI settings should pass validation."
-$guiValues.RustDeskPassword = ""
-Assert-Equal "Enter a RustDesk password." (Get-KioskGuiValidationError $guiValues) "The GUI should require a RustDesk password."
+
+$singleWebapp = New-TestPlan @(
+    (New-KioskDisplayPlan $displays[0] -Rotation "none" -Type "webapp" -Source "screen/app.zip")
+)
+Assert-Equal $null (Test-KioskPlan $singleWebapp) "A single webapp display should pass validation."
+[void] (Resolve-KioskPlan $singleWebapp)
+Assert-Equal 8080 $singleWebapp.Displays[0].Port "The only webapp should keep the default port."
+Assert-Equal "https://releases.example/screen/app.zip" $singleWebapp.Displays[0].Url "Webapp sources should be normalised."
+Assert-Equal "webapp" (Get-KioskPlanTotemType $singleWebapp) "The totem type comes from the first display."
+
+$twoVideos = New-TestPlan @(
+    (New-KioskDisplayPlan $displays[0] -Rotation "clockwise" -Type "video" -Source $dropboxOne),
+    (New-KioskDisplayPlan $displays[1] -Rotation "counterclockwise" -Type "video" -Source $dropboxTwo)
+)
+Assert-Equal $null (Test-KioskPlan $twoVideos) "Two video displays should pass validation."
+[void] (Resolve-KioskPlan $twoVideos)
+Assert-Equal 0 $twoVideos.Displays[0].Port "Video displays should not reserve a port."
+Assert-Match "dl=1" $twoVideos.Displays[1].Url "Video sources should be normalised."
+
+$mixed = New-TestPlan @(
+    (New-KioskDisplayPlan $displays[0] -Rotation "none" -Type "video" -Source $dropboxOne),
+    (New-KioskDisplayPlan $displays[1] -Rotation "none" -Type "webapp" -Source "screen/app.zip")
+)
+Assert-Match "only run video" (Test-KioskPlan $mixed) "Webapps should be rejected on multi-display setups."
+
+$missingSource = New-TestPlan @(
+    (New-KioskDisplayPlan $displays[0] -Rotation "none" -Type "video" -Source ""),
+    (New-KioskDisplayPlan $displays[1] -Rotation "none" -Type "video" -Source $dropboxTwo)
+)
+Assert-Match "Display 1" (Test-KioskPlan $missingSource) "Validation should name the display that is missing a source."
+
+$noPassword = New-TestPlan @(
+    (New-KioskDisplayPlan $displays[0] -Rotation "none" -Type "video" -Source $dropboxOne)
+)
+$noPassword.RustDeskPassword = ""
+Assert-Equal "Enter a RustDesk password." (Test-KioskPlan $noPassword) "A RustDesk password should be required."
+
+$unnamed = New-TestPlan @(
+    (New-KioskDisplayPlan $displays[0] -Rotation "none" -Type "video" -Source $dropboxOne)
+)
+$unnamed.TotemName = ""
+Assert-Match "totem name" (Test-KioskPlan $unnamed) "Registration should require a totem name."
+
 Assert-Equal "remote-secret" (Unprotect-KioskGuiSecret (Protect-KioskGuiSecret "remote-secret")) "GUI secrets should round-trip through Windows encryption."
 
 Initialize-RotationApi
@@ -100,11 +149,15 @@ $runtimeRoot = Join-Path ([IO.Path]::GetTempPath()) ("pi kiosk runtime " + [guid
 $machineRoot = Join-Path $runtimeRoot "machine"
 New-Item -ItemType Directory -Force -Path (Join-Path $runtimeRoot "app"), $machineRoot | Out-Null
 function Find-Edge { "C:\Program Files\Microsoft\Edge\Application\msedge.exe" }
+function Find-Vlc { "C:\Program Files\VideoLAN\VLC\vlc.exe" }
 function Get-KioskMachineRoot { $machineRoot }
+function Get-KioskRoot { $runtimeRoot }
 try {
-    $launcher = Write-WebRuntime $runtimeRoot (Join-Path $runtimeRoot "app")
+    $launcher = Write-WebRuntime $runtimeRoot (Join-Path $runtimeRoot "app") 8080
+    $orchestrator = Write-KioskOrchestrator $twoVideos.Displays
     foreach ($file in @(
         $launcher,
+        $orchestrator,
         (Join-Path $runtimeRoot "bin\webapp-server.ps1"),
         (Join-Path $runtimeRoot "bin\cursor-idle.ps1")
     )) {
@@ -113,6 +166,11 @@ try {
         [void] [Management.Automation.Language.Parser]::ParseFile($file, [ref] $tokens, [ref] $errors)
         Assert-Equal 0 $errors.Count "Generated runtime script $file should parse."
     }
+    $generated = Get-Content -Raw $orchestrator
+    Assert-Match "qt-fullscreen-screennumber" $generated "The orchestrator should place each video on its own screen."
+    Assert-Match "start-paused" $generated "Several videos should be held until every player is ready."
+    Assert-Match "primary" $generated "The orchestrator should target each configured display by name."
+    Assert-Match "left" $generated "The orchestrator should target each configured display by name."
 } finally {
     Remove-Item -Recurse -Force $runtimeRoot -ErrorAction SilentlyContinue
 }

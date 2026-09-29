@@ -2,7 +2,7 @@
 
 Configuration tools for kiosk machines.
 
-The Pi subproject is an interactive first-boot wizard for Raspberry Pi OS (Bookworm / Trixie, labwc). The Windows subproject provides a portable visual wizard for the equivalent single-display setup; multi-display configuration currently stops after listing the detected displays.
+The Pi subproject is an interactive first-boot wizard for Raspberry Pi OS (Bookworm / Trixie, labwc). The Windows subproject provides a portable visual wizard for the equivalent setup, on one display or several: PC-wide settings are asked once, rotation and content once per screen. Several displays run one looping video each, started together; webapp kiosks remain single-display.
 
 On Windows, either extract the repository ZIP and double-click `windows\kiosk-gui.cmd`, or open PowerShell as Administrator and run:
 

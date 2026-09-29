@@ -37,3 +37,41 @@ function Set-KioskStartup {
     "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$Launcher`"`r`n" |
         Set-Content -Encoding ASCII -Path $path
 }
+
+function Get-KioskStatePath {
+    Join-Path (Get-KioskMachineRoot) "kiosk-state.json"
+}
+
+function Save-KioskState {
+    param([object] $Plan, [string] $Launcher)
+
+    $displays = @(@($Plan.Displays) | ForEach-Object {
+        [ordered]@{
+            number     = $_.Number
+            deviceName = $_.DeviceName
+            rotation   = $_.Rotation
+            type       = $_.Type
+            source     = $_.Source
+            path       = $_.Path
+            port       = $_.Port
+        }
+    })
+    $state = [ordered]@{
+        version   = 1
+        updatedAt = [DateTime]::UtcNow.ToString("o")
+        launcher  = $Launcher
+        stateDir  = Join-Path (Get-KioskRoot) "state"
+        ports     = @(@($Plan.Displays) | Where-Object { $_.Port -gt 0 } | ForEach-Object { $_.Port })
+        displays  = $displays
+    }
+    $path = Get-KioskStatePath
+    $state | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $path
+    Protect-KioskFile $path
+    $path
+}
+
+function Get-KioskState {
+    $path = Join-Path $env:ProgramData "pi-kiosk\kiosk-state.json"
+    if (-not (Test-Path $path)) { return $null }
+    try { Get-Content -Raw -Path $path | ConvertFrom-Json } catch { $null }
+}

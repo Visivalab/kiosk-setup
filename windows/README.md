@@ -1,6 +1,8 @@
 # Windows kiosk config
 
-The portable visual wizard runs the complete single-display setup using Windows' built-in controls. It needs no installation or extra runtime. When more than one active display is detected it exits without changing the PC; per-display setup is the next milestone.
+The portable visual wizard runs the complete setup using Windows' built-in controls. It needs no installation or extra runtime.
+
+Everything that belongs to the PC — autologin, sleep, RustDesk, registration — is asked once. Rotation and kiosk content are asked once per display. With a single display the wizard offers a webapp or a video kiosk; **with several displays it offers video only**, one looping video per screen, and every screen may use a different rotation.
 
 ## Run directly from GitHub
 
@@ -32,7 +34,7 @@ $url = 'https://raw.githubusercontent.com/Visivalab/pi-kiosk/master/windows/clea
 Invoke-RestMethod -Uri $url | Invoke-Expression
 ```
 
-Cleanup removes kiosk startup and status reporting, disables autologin, deletes files owned by `pi-kiosk`, removes the local HTTP reservation, and restores all active displays to 0° rotation. It leaves installed applications, power settings, and the remote registration record unchanged.
+Cleanup removes kiosk startup and status reporting, disables autologin, deletes files owned by `pi-kiosk`, removes every local HTTP reservation it recorded, and restores all active displays to 0° rotation. It leaves installed applications, power settings, and the remote registration record unchanged.
 
 ## Run a local checkout
 
@@ -48,17 +50,27 @@ To clean up a locally configured PC:
 windows\cleanup.cmd
 ```
 
-For a single active display the wizard configures:
+The wizard configures:
 
-1. Rotation
+1. Rotation, per display, applied to every screen in a single display-layout commit
 2. Disabled display blanking and sleep
 3. Windows autologin through native AutoAdminLogon for a passwordless local account, or Microsoft Sysinternals Autologon when the account has a password
 4. RustDesk unattended access
-5. A webapp kiosk in Microsoft Edge or a looping video kiosk in VLC
-6. Optional totem registration and five-minute status reporting
+5. A webapp kiosk in Microsoft Edge (single display only) or a looping video kiosk in VLC on each display
+6. Optional totem registration and five-minute status reporting, both reporting every screen
 7. Launch now, reboot, or do nothing
 
-RustDesk and VLC are installed with `winget` when missing. Webapps are served only on `http://127.0.0.1:8080` and start from the current user's Startup folder.
+RustDesk and VLC are installed with `winget` when missing. Webapps are served only on `http://127.0.0.1:8080`.
+
+Nothing is applied until every answer validates, so a bad link on the second screen cannot leave the first one half-configured.
+
+## Several displays
+
+One entry in the Startup folder runs `bin\kiosk-start.ps1`, which starts every screen. Each player is bound to its screen by Windows device name, resolved at login rather than baked in as pixel coordinates, so re-rotating or re-arranging the monitors later does not send a video to the wrong screen.
+
+Two or more videos start together: VLC is launched paused on every screen and released over its local control interface once all of them are ready. If any player fails to answer within 30 seconds, the orchestrator restarts them all without the pause rather than leaving a screen frozen.
+
+Videos loop independently. Different durations drift apart over time by design; only the start is synchronised.
 
 The Windows password prompt accepts an empty value only for a local account that has no password. Enter the account password—not a Windows Hello PIN—when a password exists. Passwordless local accounts use Windows' native `AutoAdminLogon`; other accounts use the temporary official Sysinternals Autologon utility.
 
@@ -68,8 +80,10 @@ The Windows password prompt accepts an empty value only for a local account that
 - `kiosk-gui.ps1` renders the native Windows UI and runs setup in the background.
 - `kiosk.ps1` loads the original console wizard and exits with its result.
 - `cleanup.ps1` removes the persistent Windows kiosk configuration owned by this project.
-- `src/app.ps1` defines the ordered wizard flow.
+- `src/app.ps1` builds the setup plan and applies it in one ordered pass.
+- `src/plan.ps1` defines the plan and the single validation used by both the console and the visual wizard.
 - `src/steps/` contains one file per configuration concern.
+- `src/steps/startup.ps1` generates the startup orchestrator that runs every screen.
 - `runtime/` contains the scripts copied to the configured PC.
 - `setup.ps1` is the remote GitHub bootstrap.
 

@@ -7,10 +7,17 @@ function Show-KioskSummary {
 
 function Invoke-KioskFinalAction {
     [CmdletBinding()]
-    param([object] $Kiosk, [string] $Action)
+    param(
+        [Parameter(Mandatory = $true)][object] $Plan,
+        [Parameter(Mandatory = $true)][string] $Launcher,
+        [string] $Action
+    )
+
+    $displays = @($Plan.Displays)
+    $webapp = @($displays | Where-Object { $_.Type -eq "webapp" })
 
     if (-not $PSBoundParameters.ContainsKey("Action")) {
-        if ($Kiosk.Type -eq "webapp") {
+        if ($webapp.Count -gt 0) {
             $choice = Read-KioskChoice $script:SharedConfig.prompts.nextAction @(
                 "Simulate autorun - just for testing",
                 "Reboot - final production",
@@ -25,13 +32,14 @@ function Invoke-KioskFinalAction {
     if ($Action -notin @("launch", "reboot", "nothing")) { throw "Unknown final action: $Action" }
 
     if ($Action -eq "launch") {
-        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Kiosk.Launcher)`""
-        Write-KioskDone "launching the $($Kiosk.Type) kiosk now for testing."
+        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$Launcher`""
+        $what = if ($displays.Count -gt 1) { "$($displays.Count) kiosk screens" } else { "the $($displays[0].Type) kiosk" }
+        Write-KioskDone "launching $what now for testing."
     } elseif ($Action -eq "reboot") {
         Restart-Computer -Force
-    } elseif ($Kiosk.Type -eq "webapp") {
-        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Kiosk.Launcher)`" -ServerOnly" -WindowStyle Hidden
-        Write-KioskDone "the app is live on http://127.0.0.1:8080 without opening Edge."
+    } elseif ($webapp.Count -gt 0) {
+        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($webapp[0].Launcher)`" -ServerOnly" -WindowStyle Hidden
+        Write-KioskDone "the app is live on http://127.0.0.1:$($webapp[0].Port) without opening Edge."
     } else {
         Write-KioskDone "doing nothing now."
     }

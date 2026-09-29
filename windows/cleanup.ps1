@@ -93,6 +93,20 @@ function Stop-KioskProcesses {
     Write-Host "Done: stopped $($processes.Count) kiosk process(es)."
 }
 
+function Get-KioskCleanupPorts {
+    param([string] $MachineRoot)
+
+    $statePath = Join-Path $MachineRoot "kiosk-state.json"
+    if (Test-Path $statePath) {
+        try {
+            $state = Get-Content -Raw $statePath | ConvertFrom-Json
+            $ports = @(@($state.ports) | Where-Object { $_ } | ForEach-Object { [int] $_ })
+            if ($ports.Count -gt 0) { return $ports }
+        } catch {}
+    }
+    @(8080)
+}
+
 function Invoke-KioskCleanup {
     try {
         if ($env:OS -ne "Windows_NT") { throw "This cleanup only runs on Windows. Nothing was changed." }
@@ -116,8 +130,11 @@ function Invoke-KioskCleanup {
         Clear-KioskAutologonSecret
         Write-Host "Done: disabled Windows autologin and cleared its saved secret."
 
-        & netsh.exe http delete urlacl url=http://127.0.0.1:8080/ 2>$null | Out-Null
-        Write-Host "Done: removed the local web server reservation."
+        $ports = Get-KioskCleanupPorts $machineRoot
+        foreach ($port in $ports) {
+            & netsh.exe http delete urlacl url=http://127.0.0.1:$port/ 2>$null | Out-Null
+        }
+        Write-Host "Done: removed the local web server reservation on port(s) $($ports -join ', ')."
 
         Remove-Item $userRoot -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item $machineRoot -Recurse -Force -ErrorAction SilentlyContinue

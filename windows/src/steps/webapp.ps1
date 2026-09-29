@@ -68,7 +68,7 @@ function Find-Edge {
 }
 
 function Write-WebRuntime {
-    param([string] $Root, [string] $AppDir)
+    param([string] $Root, [string] $AppDir, [int] $Port = 8080)
     $bin = Join-Path $Root "bin"
     $logs = Join-Path $Root "logs"
     New-Item -ItemType Directory -Force -Path $bin, $logs | Out-Null
@@ -86,15 +86,15 @@ function Write-WebRuntime {
     @"
 param([switch] `$ServerOnly)
 `$ErrorActionPreference = "Stop"
-`$serverArgs = '-NoProfile -ExecutionPolicy Bypass -File "$server" -Root "$AppDir" -Port 8080 -Log "$serverLog"'
+`$serverArgs = '-NoProfile -ExecutionPolicy Bypass -File "$server" -Root "$AppDir" -Port $Port -Log "$serverLog"'
 `$serverProcess = Start-Process powershell.exe -ArgumentList `$serverArgs -WindowStyle Hidden -PassThru
 try {
-  for (`$i=0; `$i -lt 50; `$i++) { try { `$client=[Net.Sockets.TcpClient]::new(); `$client.Connect('127.0.0.1',8080); `$client.Dispose(); break } catch { Start-Sleep -Milliseconds 200 } }
+  for (`$i=0; `$i -lt 50; `$i++) { try { `$client=[Net.Sockets.TcpClient]::new(); `$client.Connect('127.0.0.1',$Port); `$client.Dispose(); break } catch { Start-Sleep -Milliseconds 200 } }
   if ((Test-Path '$reporter') -and (Test-Path '$reporterConfig')) { Start-Process powershell.exe -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "$reporter" -ConfigPath "$reporterConfig"' -WindowStyle Hidden }
   if (`$ServerOnly) { Wait-Process -Id `$serverProcess.Id; exit }
   `$cursor = Start-Process powershell.exe -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "$cursor"' -WindowStyle Hidden -PassThru
   try {
-    `$browser = Start-Process -FilePath '$edge' -ArgumentList @('--kiosk','http://127.0.0.1:8080','--edge-kiosk-type=fullscreen','--no-first-run','--user-data-dir=$profile') -PassThru
+    `$browser = Start-Process -FilePath '$edge' -ArgumentList @('--kiosk','http://127.0.0.1:$Port','--edge-kiosk-type=fullscreen','--no-first-run','--user-data-dir=$profile') -PassThru
     Wait-Process -Id `$browser.Id
   } finally { Stop-Process -Id `$cursor.Id -Force -ErrorAction SilentlyContinue }
 } finally { Stop-Process -Id `$serverProcess.Id -Force -ErrorAction SilentlyContinue }
@@ -103,7 +103,8 @@ try {
 }
 
 function Install-KioskWebApp {
-    param([string] $SourceUrl)
+    param([Parameter(Mandatory = $true)][object] $Display)
+
     $root = Get-KioskRoot
     $webRoot = Join-Path $root "webapp"
     $next = Join-Path $webRoot "next"
@@ -113,7 +114,7 @@ function Install-KioskWebApp {
     try {
         $archive = Join-Path $temp "webapp.zip"
         Write-KioskProgress "Downloading webapp ZIP"
-        Invoke-WebRequest -UseBasicParsing -Uri $SourceUrl -OutFile $archive
+        Invoke-WebRequest -UseBasicParsing -Uri $Display.Url -OutFile $archive
         $extracted = Join-Path $temp "extracted"
         Write-KioskProgress "Extracting webapp files"
         Expand-SafeZip $archive $extracted
@@ -126,11 +127,12 @@ function Install-KioskWebApp {
         Move-Item $next $current
     } finally { Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue }
 
-    & netsh.exe http delete urlacl url=http://127.0.0.1:8080/ 2>$null | Out-Null
-    & netsh.exe http add urlacl url=http://127.0.0.1:8080/ "user=$env:USERDOMAIN\$env:USERNAME" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Could not reserve http://127.0.0.1:8080/ for the kiosk user." }
-    $launcher = Write-WebRuntime $root $current
-    Set-KioskStartup $launcher
-    Write-KioskDone "webapp kiosk deployed from $SourceUrl to $current. Edge will start on the next login."
-    [pscustomobject]@{ Type = "webapp"; Launcher = $launcher; Source = $SourceUrl; Path = $current }
+    $url = "http://127.0.0.1:$($Display.Port)/"
+    & netsh.exe http delete urlacl url=$url 2>$null | Out-Null
+    & netsh.exe http add urlacl url=$url "user=$env:USERDOMAIN\$env:USERNAME" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not reserve $url for the kiosk user." }
+    $Display.Path = $current
+    $Display.Launcher = Write-WebRuntime $root $current $Display.Port
+    Write-KioskDone "webapp kiosk deployed from $($Display.Url) to $current on port $($Display.Port)."
+    $Display
 }

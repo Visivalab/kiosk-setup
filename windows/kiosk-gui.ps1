@@ -23,20 +23,29 @@ function Unprotect-KioskGuiSecret {
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
 }
 
-function Get-KioskGuiValidationError {
-    param([object] $Values)
-    if ([string]::IsNullOrWhiteSpace($Values.RustDeskPassword)) {
-        return "Enter a RustDesk password."
+function ConvertFrom-KioskGuiConfig {
+    param([Parameter(Mandatory = $true)][object] $Config, [object[]] $Detected)
+
+    $planned = @()
+    foreach ($entry in @($Config.displays)) {
+        $match = @(@($Detected) | Where-Object { $_.DeviceName -eq [string] $entry.deviceName })
+        if ($match.Count -ne 1) {
+            throw "The connected displays changed since the wizard opened. Nothing was changed."
+        }
+        $planned += New-KioskDisplayPlan $match[0] `
+            -Rotation ([string] $entry.rotation) -Type ([string] $entry.type) -Source ([string] $entry.source)
     }
-    try {
-        if ($Values.ProjectType -eq "webapp") { [void] (Normalize-WebAppSource $Values.Source) }
-        elseif ($Values.ProjectType -eq "video") { [void] (Normalize-VideoSource $Values.Source) }
-        else { return "Choose a kiosk type." }
-    } catch { return $_.Exception.Message }
-    if ($Values.RegisterTotem -and [string]::IsNullOrWhiteSpace($Values.TotemName)) {
-        return "Enter a totem name or turn off registration."
+    if ($planned.Count -ne @($Detected).Count) {
+        throw "The connected displays changed since the wizard opened. Nothing was changed."
     }
-    $null
+    New-KioskPlan -Displays $planned `
+        -WindowsPassword (Unprotect-KioskGuiSecret ([string] $Config.windowsPassword)) `
+        -RustDeskPassword (Unprotect-KioskGuiSecret ([string] $Config.rustDeskPassword)) `
+        -Register ([bool] $Config.registerTotem) `
+        -TotemName ([string] $Config.totemName) `
+        -TotemDescription ([string] $Config.totemDescription) `
+        -TotemLocation ([string] $Config.totemLocation) `
+        -FinalAction ([string] $Config.finalAction)
 }
 
 function Invoke-KioskGuiSetup {
@@ -45,47 +54,8 @@ function Invoke-KioskGuiSetup {
         if (-not (Test-KioskAdministrator)) { throw "Administrator access is required." }
         $script:SharedConfig = Get-KioskSharedConfig
         $config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
-        $values = [pscustomobject]@{
-            Rotation = [string] $config.rotation
-            WindowsPassword = Unprotect-KioskGuiSecret ([string] $config.windowsPassword)
-            RustDeskPassword = Unprotect-KioskGuiSecret ([string] $config.rustDeskPassword)
-            ProjectType = [string] $config.projectType
-            Source = [string] $config.source
-            RegisterTotem = [bool] $config.registerTotem
-            TotemName = [string] $config.totemName
-            TotemDescription = [string] $config.totemDescription
-            TotemLocation = [string] $config.totemLocation
-            FinalAction = [string] $config.finalAction
-        }
-        $validationError = Get-KioskGuiValidationError $values
-        if ($validationError) { throw $validationError }
-        if ($values.Rotation -notin @("none", "clockwise", "counterclockwise")) { throw "Choose a screen rotation." }
-        if ($values.FinalAction -notin @("launch", "reboot", "nothing")) { throw "Choose what to do after setup." }
-
-        $displays = @(Get-KioskDisplays)
-        if ($displays.Count -ne 1) { throw "This version requires exactly one active display. Nothing was changed." }
-        $sourceUrl = if ($values.ProjectType -eq "webapp") {
-            Normalize-WebAppSource $values.Source
-        } else {
-            Normalize-VideoSource $values.Source
-        }
-
-        Set-KioskRotation $displays[0] $values.Rotation
-        Set-KioskNoSleep
-        Enable-KioskAutologon -Password $values.WindowsPassword
-        [void] (Install-KioskRustDesk $values.RustDeskPassword)
-        $kiosk = if ($values.ProjectType -eq "webapp") {
-            Install-KioskWebApp $sourceUrl
-        } else {
-            Install-KioskVideo $sourceUrl
-        }
-        if ($values.RegisterTotem) {
-            Register-KioskTotem -TotemType $kiosk.Type -Name $values.TotemName -Description $values.TotemDescription -Location $values.TotemLocation
-        } else {
-            Write-KioskDone "skipped totem registration."
-        }
-        Show-KioskSummary
-        Invoke-KioskFinalAction $kiosk -Action $values.FinalAction
+        $plan = ConvertFrom-KioskGuiConfig $config (Get-KioskDisplays)
+        Invoke-KioskPlan $plan
         return 0
     } catch {
         [Console]::Error.WriteLine($_.Exception.Message)
@@ -137,22 +107,35 @@ function New-KioskGuiGroup {
     [pscustomobject]@{ Group = $group; Table = $table }
 }
 
+function New-KioskGuiRotation {
+    $rotation = [Windows.Forms.ComboBox]::new()
+    $rotation.DropDownStyle = "DropDownList"
+    [void] $rotation.Items.AddRange(@(
+        $script:SharedConfig.choices.rotation.none,
+        $script:SharedConfig.choices.rotation.clockwise,
+        $script:SharedConfig.choices.rotation.counterclockwise
+    ))
+    $rotation.SelectedIndex = 0
+    $rotation
+}
+
 function Show-KioskGui {
     [Windows.Forms.Application]::EnableVisualStyles()
     $script:SharedConfig = Get-KioskSharedConfig
     $displays = @(Get-KioskDisplays)
-    if ($displays.Count -ne 1) {
+    if ($displays.Count -eq 0) {
         [void] [Windows.Forms.MessageBox]::Show(
-            "This version requires exactly one active display. Nothing was changed.",
+            "No active displays were detected. Nothing was changed.",
             "Kiosk setup", "OK", "Warning"
         )
         return 0
     }
+    $multiple = $displays.Count -gt 1
 
     $form = [Windows.Forms.Form]::new()
     $form.Text = "Kiosk setup"
     $form.StartPosition = "CenterScreen"
-    $form.ClientSize = [Drawing.Size]::new(720, 680)
+    $form.ClientSize = [Drawing.Size]::new(720, 720)
     $form.MinimumSize = [Drawing.Size]::new(620, 620)
     $form.Font = [Drawing.SystemFonts]::MessageBoxFont
     $form.AutoScaleMode = "Font"
@@ -173,26 +156,68 @@ function Show-KioskGui {
     $root.Controls.Add($title)
 
     $intro = [Windows.Forms.Label]::new()
-    $intro.Text = "Review the settings, then select Configure kiosk."
+    $intro.Text = if ($multiple) {
+        "$($displays.Count) displays detected. Each one plays its own looping video and they start together. Review the settings, then select Configure kiosk."
+    } else {
+        "Review the settings, then select Configure kiosk."
+    }
     $intro.AutoSize = $true
+    $intro.MaximumSize = [Drawing.Size]::new(640, 0)
     $intro.Margin = [Windows.Forms.Padding]::new(0, 0, 0, 20)
     $root.Controls.Add($intro)
 
-    $displayGroup = New-KioskGuiGroup "Display"
-    $display = [Windows.Forms.TextBox]::new()
-    $display.ReadOnly = $true
-    $display.Text = Format-KioskDisplay $displays[0]
-    Add-KioskGuiField $displayGroup.Table "Active display:" $display
-    $rotation = [Windows.Forms.ComboBox]::new()
-    $rotation.DropDownStyle = "DropDownList"
-    [void] $rotation.Items.AddRange(@(
-        $script:SharedConfig.choices.rotation.none,
-        $script:SharedConfig.choices.rotation.clockwise,
-        $script:SharedConfig.choices.rotation.counterclockwise
-    ))
-    $rotation.SelectedIndex = 0
-    Add-KioskGuiField $displayGroup.Table "Rotation:" $rotation
-    $root.Controls.Add($displayGroup.Group)
+    $sections = @()
+    if ($multiple) {
+        $tabs = [Windows.Forms.TabControl]::new()
+        $tabs.Dock = "Top"
+        $tabs.Height = 190
+        $tabs.Margin = [Windows.Forms.Padding]::new(0, 0, 0, 16)
+        foreach ($display in $displays) {
+            $page = [Windows.Forms.TabPage]::new()
+            $page.Text = "Display $($display.Number)"
+            $page.Padding = [Windows.Forms.Padding]::new(12)
+            $page.UseVisualStyleBackColor = $true
+            $group = New-KioskGuiGroup (Format-KioskDisplay $display)
+            $rotationBox = New-KioskGuiRotation
+            Add-KioskGuiField $group.Table "Rotation:" $rotationBox
+            $sourceBox = [Windows.Forms.TextBox]::new()
+            $sourceBox.AccessibleDescription = "Dropbox shared video link for display $($display.Number)"
+            Add-KioskGuiField $group.Table "Dropbox link:" $sourceBox
+            $page.Controls.Add($group.Group)
+            [void] $tabs.TabPages.Add($page)
+            $sections += [pscustomobject]@{
+                Display = $display; Rotation = $rotationBox; Type = $null; FixedType = "video"; Source = $sourceBox
+            }
+        }
+        $root.Controls.Add($tabs)
+    } else {
+        $displayGroup = New-KioskGuiGroup "Display"
+        $displayBox = [Windows.Forms.TextBox]::new()
+        $displayBox.ReadOnly = $true
+        $displayBox.Text = Format-KioskDisplay $displays[0]
+        Add-KioskGuiField $displayGroup.Table "Active display:" $displayBox
+        $rotationBox = New-KioskGuiRotation
+        Add-KioskGuiField $displayGroup.Table "Rotation:" $rotationBox
+        $root.Controls.Add($displayGroup.Group)
+
+        $contentGroup = New-KioskGuiGroup "Kiosk content"
+        $projectType = [Windows.Forms.ComboBox]::new()
+        $projectType.DropDownStyle = "DropDownList"
+        [void] $projectType.Items.AddRange(@(
+            $script:SharedConfig.choices.project.webapp,
+            $script:SharedConfig.choices.project.video
+        ))
+        $projectType.SelectedIndex = 0
+        Add-KioskGuiField $contentGroup.Table "Type:" $projectType
+        $sourceBox = [Windows.Forms.TextBox]::new()
+        Add-KioskGuiField $contentGroup.Table "S3 ZIP path:" $sourceBox
+        $sourceLabel = $contentGroup.Table.GetControlFromPosition(0, 1)
+        $sourceBox.AccessibleDescription = "Example: $($script:SharedConfig.webappPathExample)"
+        $root.Controls.Add($contentGroup.Group)
+        $sections += [pscustomobject]@{
+            Display = $displays[0]; Rotation = $rotationBox; Type = $projectType; FixedType = ""; Source = $sourceBox
+        }
+    }
 
     $accountGroup = New-KioskGuiGroup "Access"
     $windowsPassword = [Windows.Forms.TextBox]::new()
@@ -203,21 +228,6 @@ function Show-KioskGui {
     $rustDeskPassword.UseSystemPasswordChar = $true
     Add-KioskGuiField $accountGroup.Table "RustDesk password:" $rustDeskPassword
     $root.Controls.Add($accountGroup.Group)
-
-    $contentGroup = New-KioskGuiGroup "Kiosk content"
-    $projectType = [Windows.Forms.ComboBox]::new()
-    $projectType.DropDownStyle = "DropDownList"
-    [void] $projectType.Items.AddRange(@(
-        $script:SharedConfig.choices.project.webapp,
-        $script:SharedConfig.choices.project.video
-    ))
-    $projectType.SelectedIndex = 0
-    Add-KioskGuiField $contentGroup.Table "Type:" $projectType
-    $source = [Windows.Forms.TextBox]::new()
-    Add-KioskGuiField $contentGroup.Table "S3 ZIP path:" $source
-    $sourceLabel = $contentGroup.Table.GetControlFromPosition(0, 1)
-    $source.AccessibleDescription = "Example: $($script:SharedConfig.webappPathExample)"
-    $root.Controls.Add($contentGroup.Group)
 
     $registrationGroup = New-KioskGuiGroup "Registration"
     $registerTotem = [Windows.Forms.CheckBox]::new()
@@ -239,7 +249,8 @@ function Show-KioskGui {
     $finishGroup = New-KioskGuiGroup "After setup"
     $finalAction = [Windows.Forms.ComboBox]::new()
     $finalAction.DropDownStyle = "DropDownList"
-    [void] $finalAction.Items.AddRange(@("Launch now", "Reboot", "Keep the app server running"))
+    $lastChoice = if ($multiple) { "Do nothing" } else { "Keep the app server running" }
+    [void] $finalAction.Items.AddRange(@("Launch now", "Reboot", $lastChoice))
     $finalAction.SelectedIndex = 0
     Add-KioskGuiField $finishGroup.Table "Next action:" $finalAction
     $root.Controls.Add($finishGroup.Group)
@@ -263,19 +274,23 @@ function Show-KioskGui {
     $root.Controls.Add($apply)
     $form.AcceptButton = $apply
 
-    $projectType.Add_SelectedIndexChanged({
-        if ($projectType.SelectedIndex -eq 0) {
-            $sourceLabel.Text = "S3 ZIP path:"
-            $source.AccessibleName = "S3 ZIP path"
-            $source.AccessibleDescription = "Example: $($script:SharedConfig.webappPathExample)"
-            $finalAction.Items[2] = "Keep the app server running"
-        } else {
-            $sourceLabel.Text = "Dropbox link:"
-            $source.AccessibleName = "Dropbox link"
-            $source.AccessibleDescription = "Dropbox shared video link"
-            $finalAction.Items[2] = "Do nothing"
-        }
-    })
+    if (-not $multiple) {
+        $singleType = $sections[0].Type
+        $singleSource = $sections[0].Source
+        $singleType.Add_SelectedIndexChanged({
+            if ($singleType.SelectedIndex -eq 0) {
+                $sourceLabel.Text = "S3 ZIP path:"
+                $singleSource.AccessibleName = "S3 ZIP path"
+                $singleSource.AccessibleDescription = "Example: $($script:SharedConfig.webappPathExample)"
+                $finalAction.Items[2] = "Keep the app server running"
+            } else {
+                $sourceLabel.Text = "Dropbox link:"
+                $singleSource.AccessibleName = "Dropbox link"
+                $singleSource.AccessibleDescription = "Dropbox shared video link"
+                $finalAction.Items[2] = "Do nothing"
+            }
+        })
+    }
 
     $registerTotem.Add_CheckedChanged({
         foreach ($control in @($totemName, $totemDescription, $totemLocation)) {
@@ -308,19 +323,19 @@ function Show-KioskGui {
     })
 
     $apply.Add_Click({
-        $values = [pscustomobject]@{
-            Rotation = @("none", "clockwise", "counterclockwise")[$rotation.SelectedIndex]
-            WindowsPassword = $windowsPassword.Text
-            RustDeskPassword = $rustDeskPassword.Text
-            ProjectType = @("webapp", "video")[$projectType.SelectedIndex]
-            Source = $source.Text
-            RegisterTotem = $registerTotem.Checked
-            TotemName = $totemName.Text
-            TotemDescription = $totemDescription.Text
-            TotemLocation = $totemLocation.Text
-            FinalAction = @("launch", "reboot", "nothing")[$finalAction.SelectedIndex]
-        }
-        $validationError = Get-KioskGuiValidationError $values
+        $planned = @($sections | ForEach-Object {
+            $type = if ($_.Type) { @("webapp", "video")[$_.Type.SelectedIndex] } else { $_.FixedType }
+            New-KioskDisplayPlan $_.Display `
+                -Rotation @("none", "clockwise", "counterclockwise")[$_.Rotation.SelectedIndex] `
+                -Type $type -Source $_.Source.Text.Trim()
+        })
+        $plan = New-KioskPlan -Displays $planned `
+            -WindowsPassword $windowsPassword.Text -RustDeskPassword $rustDeskPassword.Text `
+            -Register $registerTotem.Checked -TotemName $totemName.Text `
+            -TotemDescription $totemDescription.Text -TotemLocation $totemLocation.Text `
+            -FinalAction @("launch", "reboot", "nothing")[$finalAction.SelectedIndex]
+
+        $validationError = Test-KioskPlan $plan
         if ($validationError) {
             $status.Text = $validationError
             [void] [Windows.Forms.MessageBox]::Show($validationError, "Check the settings", "OK", "Warning")
@@ -333,17 +348,17 @@ function Show-KioskGui {
         New-Item -ItemType Directory -Path $script:GuiWork | Out-Null
         $configPath = Join-Path $script:GuiWork "setup.json"
         @{
-            rotation = $values.Rotation
-            windowsPassword = Protect-KioskGuiSecret $values.WindowsPassword
-            rustDeskPassword = Protect-KioskGuiSecret $values.RustDeskPassword
-            projectType = $values.ProjectType
-            source = $values.Source
-            registerTotem = $values.RegisterTotem
-            totemName = $values.TotemName
-            totemDescription = $values.TotemDescription
-            totemLocation = $values.TotemLocation
-            finalAction = $values.FinalAction
-        } | ConvertTo-Json | Set-Content -Encoding UTF8 $configPath
+            windowsPassword = Protect-KioskGuiSecret $windowsPassword.Text
+            rustDeskPassword = Protect-KioskGuiSecret $rustDeskPassword.Text
+            registerTotem = $plan.Register
+            totemName = $plan.TotemName
+            totemDescription = $plan.TotemDescription
+            totemLocation = $plan.TotemLocation
+            finalAction = $plan.FinalAction
+            displays = @(@($plan.Displays) | ForEach-Object {
+                @{ number = $_.Number; deviceName = $_.DeviceName; rotation = $_.Rotation; type = $_.Type; source = $_.Source }
+            })
+        } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 $configPath
         $script:GuiStdout = Join-Path $script:GuiWork "setup.log"
         $script:GuiStderr = Join-Path $script:GuiWork "error.log"
         $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -ApplyConfig `"$configPath`""

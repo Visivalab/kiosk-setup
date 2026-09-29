@@ -7,14 +7,40 @@ function Get-SavedRustDesk {
     [pscustomobject]@{ id = $null; password = $null }
 }
 
+function ConvertTo-KioskScreenReport {
+    param([object[]] $Displays)
+    @(@($Displays) | ForEach-Object {
+        [ordered]@{
+            number     = $_.Number
+            deviceName = $_.DeviceName
+            type       = $_.Type
+            rotation   = $_.Rotation
+            source     = $_.Source
+            port       = $_.Port
+        }
+    })
+}
+
 function Install-KioskStatusReporter {
-    param([string] $Endpoint, [string] $Token, [string] $TotemType)
+    param([string] $Endpoint, [string] $Token, [object[]] $Displays)
+
     $root = Get-KioskMachineRoot
     $configPath = Join-Path $root "totem-status.json"
     $scriptPath = Join-Path $root "totem-status.ps1"
-    @{
-        endpointUrl = $Endpoint; token = $Token; totemId = $env:COMPUTERNAME; totemType = $TotemType; port = 8080
-    } | ConvertTo-Json | Set-Content -Encoding UTF8 $configPath
+    $webPorts = @(@($Displays) | Where-Object { $_.Port -gt 0 } | ForEach-Object { $_.Port })
+    $screens = @(@($Displays) | ForEach-Object {
+        [ordered]@{ number = $_.Number; type = $_.Type; port = $_.Port }
+    })
+    $reportedPort = if ($webPorts.Count -gt 0) { $webPorts[0] } else { 8080 }
+    [ordered]@{
+        endpointUrl = $Endpoint
+        token = $Token
+        totemId = $env:COMPUTERNAME
+        totemType = @($Displays)[0].Type
+        port = $reportedPort
+        stateDir = Join-Path (Get-KioskRoot) "state"
+        screens = $screens
+    } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 $configPath
     Protect-KioskFile $configPath
     Copy-Item (Join-Path $script:WindowsRoot "runtime\totem-status.ps1") $scriptPath -Force
     $taskCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -ConfigPath `"$configPath`""
@@ -39,6 +65,7 @@ function Register-KioskTotem {
     [CmdletBinding()]
     param(
         [string] $TotemType,
+        [object[]] $Displays = @(),
         [string] $Name,
         [string] $Description = "",
         [string] $Location = ""
@@ -58,15 +85,17 @@ function Register-KioskTotem {
     $machineId = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Cryptography").MachineGuid
     $endpoint = if ($env:PI_KIOSK_REGISTER_TOTEM_URL) { $env:PI_KIOSK_REGISTER_TOTEM_URL } else { $script:SharedConfig.registerTotemUrl }
     $token = if ($env:PI_KIOSK_REGISTER_TOTEM_TOKEN) { $env:PI_KIOSK_REGISTER_TOTEM_TOKEN } else { $script:SharedConfig.registerTotemToken }
-    $payload = @{
+    $screens = ConvertTo-KioskScreenReport $Displays
+    $payload = [ordered]@{
         totem_id = $env:COMPUTERNAME; totemType = $TotemType; machineName = $env:COMPUTERNAME;
         machineId = $machineId; name = $name; description = $description; location = $location;
         rustdeskId = $credentials.id; rustdeskPassword = $credentials.password;
+        screenCount = $screens.Count; screens = $screens;
         registeredAt = [DateTime]::UtcNow.ToString("o")
-    } | ConvertTo-Json
+    } | ConvertTo-Json -Depth 4
     Write-KioskProgress "Registering totem"
     Invoke-WebRequest -UseBasicParsing -Method Post -Uri $endpoint -Headers @{ Authorization = "Bearer $token" } -ContentType "application/json" -Body $payload | Out-Null
     $statusEndpoint = Get-KioskStatusEndpoint $endpoint
-    Install-KioskStatusReporter $statusEndpoint $token $TotemType
-    Write-KioskDone "totem registered for machine $env:COMPUTERNAME. Status reporter installed."
+    Install-KioskStatusReporter $statusEndpoint $token $Displays
+    Write-KioskDone "totem registered for machine $env:COMPUTERNAME with $($screens.Count) screen(s). Status reporter installed."
 }
