@@ -69,6 +69,30 @@ class WindowsEntrypointTests(unittest.TestCase):
             autologon.index("Downloading Microsoft Sysinternals Autologon"),
         )
 
+    def test_cleanup_removes_owned_state_and_disables_autostart(self):
+        cmd = WINDOWS / "cleanup.cmd"
+        script = WINDOWS / "cleanup.ps1"
+        bootstrap = WINDOWS / "cleanup-setup.ps1"
+
+        self.assertTrue(cmd.is_file())
+        self.assertTrue(script.is_file())
+        self.assertTrue(bootstrap.is_file())
+        cleanup = script.read_text(encoding="utf-8")
+        for expected in (
+            "pi-kiosk.cmd",
+            "pi-kiosk-totem-status",
+            'Join-Path $env:LOCALAPPDATA "pi-kiosk"',
+            'Join-Path $env:ProgramData "pi-kiosk"',
+            "http://127.0.0.1:8080/",
+            "AutoAdminLogon",
+            "DefaultPassword",
+            "LsaStorePrivateData",
+            "[KioskDisplay]::Rotate($display.DeviceName, 0)",
+        ):
+            self.assertIn(expected, cleanup)
+        self.assertNotIn("powercfg", cleanup.lower())
+        self.assertNotIn("winget uninstall", cleanup.lower())
+
     def test_remote_setup_downloads_one_repository_archive(self):
         setup = (WINDOWS / "setup.ps1").read_text(encoding="utf-8")
 

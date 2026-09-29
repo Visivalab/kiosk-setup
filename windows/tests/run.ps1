@@ -75,6 +75,14 @@ Assert-Equal `
 Initialize-RotationApi
 Assert-Equal 156 ([Runtime.InteropServices.Marshal]::SizeOf([type] [KioskDisplay+DEVMODE])) "The Windows display structure should have the native size."
 
+foreach ($file in @("cleanup.ps1", "cleanup-setup.ps1")) {
+    $tokens = $null
+    $errors = $null
+    $path = Join-Path $PSScriptRoot "..\$file"
+    [void] [Management.Automation.Language.Parser]::ParseFile($path, [ref] $tokens, [ref] $errors)
+    Assert-Equal 0 $errors.Count "$file should parse."
+}
+
 $runtimeRoot = Join-Path ([IO.Path]::GetTempPath()) ("pi kiosk runtime " + [guid]::NewGuid())
 $machineRoot = Join-Path $runtimeRoot "machine"
 New-Item -ItemType Directory -Force -Path (Join-Path $runtimeRoot "app"), $machineRoot | Out-Null

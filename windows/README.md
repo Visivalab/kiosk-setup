@@ -13,12 +13,29 @@ Invoke-RestMethod -Uri $url | Invoke-Expression
 
 The bootstrap downloads one repository archive so the wizard, its steps, runtime scripts, and shared configuration always use the same revision.
 
+## Remove the kiosk configuration
+
+Open Windows Terminal **as Administrator**, then run:
+
+```powershell
+$url = 'https://raw.githubusercontent.com/Visivalab/pi-kiosk/master/windows/cleanup-setup.ps1'
+Invoke-RestMethod -Uri $url | Invoke-Expression
+```
+
+Cleanup removes kiosk startup and status reporting, disables autologin, deletes files owned by `pi-kiosk`, removes the local HTTP reservation, and restores all active displays to 0° rotation. It leaves installed applications, power settings, and the remote registration record unchanged.
+
 ## Run a local checkout
 
 From the repository root in an Administrator terminal:
 
 ```bat
 windows\kiosk.cmd
+```
+
+To clean up a locally configured PC:
+
+```bat
+windows\cleanup.cmd
 ```
 
 For a single active display the wizard configures:
@@ -38,6 +55,7 @@ The Windows password prompt accepts an empty value only for a local account that
 ## Layout
 
 - `kiosk.ps1` loads the wizard and exits with its result.
+- `cleanup.ps1` removes the persistent Windows kiosk configuration owned by this project.
 - `src/app.ps1` defines the ordered wizard flow.
 - `src/steps/` contains one file per configuration concern.
 - `runtime/` contains the scripts copied to the configured PC.
