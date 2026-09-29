@@ -772,6 +772,24 @@ class LinuxHostTests(unittest.TestCase):
             ],
         )
 
+    def test_download_video_accepts_dropbox_application_binary_mp4(self):
+        host = LinuxHost()
+        payload = b"\x00\x00\x00\x18ftypmp42" + b"video"
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch(
+                "urllib.request.urlopen",
+                return_value=FakeResponse(
+                    payload,
+                    headers={"Content-Type": "application/binary", "Content-Length": str(len(payload))},
+                ),
+            ):
+                video = host._download_video_file(
+                    "https://www.dropbox.com/scl/fi/example/demo.mp4?rlkey=key&dl=1",
+                    Path(tmp),
+                    "demo.mp4",
+                )
+            self.assertEqual(video.read_bytes(), payload)
+
     def test_deploy_video_rejects_html_content(self):
         host = LinuxHost()
 

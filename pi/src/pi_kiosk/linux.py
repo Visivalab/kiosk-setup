@@ -1057,6 +1057,7 @@ def _validate_video_content_type(response: object) -> None:
         return
     if content_type in {
         "application/octet-stream",
+        "application/binary",  # Dropbox also uses this for MP4 downloads.
         "binary/octet-stream",
         "application/mp4",
         "application/x-mp4",
