@@ -84,7 +84,17 @@ function Test-KioskPlan {
         }
         try {
             if ($display.Type -eq "webapp") { [void] (Normalize-WebAppSource $display.Source) }
-            else { [void] (Normalize-VideoSource $display.Source) }
+            else {
+                $videoSource = Normalize-VideoSource $display.Source
+                if (Test-KioskLocalVideoSource $videoSource) {
+                    if (-not (Test-Path -LiteralPath $videoSource -PathType Leaf)) {
+                        return "$label - local video file not found: $videoSource"
+                    }
+                    if ((Get-Item -LiteralPath $videoSource).Length -eq 0) {
+                        return "$label - local video file is empty: $videoSource"
+                    }
+                }
+            }
         } catch {
             return "$label - $($_.Exception.Message)"
         }

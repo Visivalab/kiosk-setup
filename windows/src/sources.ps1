@@ -13,10 +13,16 @@ function Normalize-WebAppSource {
     "$($script:SharedConfig.s3ReleaseBaseUrl)$path"
 }
 
+function Test-KioskLocalVideoSource {
+    param([string] $Value)
+    $Value -match '^[A-Za-z]:[\\/]|^\\\\[^\\]+\\[^\\]+\\'
+}
+
 function Normalize-VideoSource {
     param([string] $Value)
     $text = $Value.Trim()
-    try { $uri = [uri] $text } catch { throw "Enter a valid Dropbox shared file link over HTTPS." }
+    if (Test-KioskLocalVideoSource $text) { return [IO.Path]::GetFullPath($text) }
+    try { $uri = [uri] $text } catch { throw "Enter a Dropbox shared file link over HTTPS or an absolute local video path." }
     $hostName = $uri.Host.ToLowerInvariant()
     if ($uri.Scheme -ne "https" -or ($hostName -ne "dropbox.com" -and -not $hostName.EndsWith(".dropbox.com"))) {
         throw "Enter a valid Dropbox shared file link over HTTPS."

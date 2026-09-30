@@ -316,8 +316,8 @@ function Show-KioskGui {
             $rotationBox = New-KioskGuiRotation
             Add-KioskGuiField $group.Table "Rotation:" $rotationBox
             $sourceBox = [Windows.Forms.TextBox]::new()
-            $sourceBox.AccessibleDescription = "Dropbox shared video link for display $($display.Number)"
-            Add-KioskGuiField $group.Table "Dropbox link:" $sourceBox
+            $sourceBox.AccessibleDescription = "Dropbox link or absolute local video path for display $($display.Number)"
+            Add-KioskGuiField $group.Table "Dropbox link or local file:" $sourceBox
             $page.Controls.Add($group.Group)
             [void] $tabs.TabPages.Add($page)
             $sections += [pscustomobject]@{
@@ -490,9 +490,9 @@ function Show-KioskGui {
                 $audioSource.Items[0] = "Webapp on display 1"
                 $audioNote.Text = "The webapp plays its own sound through the output available when it plays."
             } else {
-                $sourceLabel.Text = "Dropbox link:"
-                $singleSource.AccessibleName = "Dropbox link"
-                $singleSource.AccessibleDescription = "Dropbox shared video link"
+                $sourceLabel.Text = "Dropbox link or local file:"
+                $singleSource.AccessibleName = "Dropbox link or local file"
+                $singleSource.AccessibleDescription = "Dropbox shared video link or absolute local video path"
                 $finalAction.Items[2] = "Do nothing"
                 $audioSource.Items[0] = "Display 1 - the only screen"
                 $audioNote.Text = "The only video plays its own sound through the output available when it plays."

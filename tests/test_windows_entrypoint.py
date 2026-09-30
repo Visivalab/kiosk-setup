@@ -178,6 +178,16 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("Multiple displays can only run video kiosks", plan)
         self.assertNotIn("requires exactly one active display", gui)
 
+    def test_video_accepts_local_files_and_copies_them_into_managed_storage(self):
+        sources = read("src", "sources.ps1")
+        video = read("src", "steps", "video.ps1")
+        plan = read("src", "plan.ps1")
+
+        self.assertIn("Test-KioskLocalVideoSource", sources)
+        self.assertIn("Test-Path -LiteralPath", plan)
+        self.assertIn("Copy-Item -LiteralPath", video)
+        self.assertIn("Invoke-WebRequest", video)
+
     def test_every_display_gets_its_own_video_directory(self):
         video = read("src", "steps", "video.ps1")
 

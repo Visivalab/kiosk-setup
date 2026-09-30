@@ -62,9 +62,9 @@ function Read-KioskDisplayPlan {
     $sourcePrompt = if ($type -eq "webapp") {
         $script:SharedConfig.prompts.webappSource.Replace("{example}", $script:SharedConfig.webappPathExample)
     } elseif ($VideoOnly) {
-        "$($script:SharedConfig.prompts.videoSource) - display $($Display.Number)"
+        "$($script:SharedConfig.prompts.videoSource) or absolute local video path - display $($Display.Number)"
     } else {
-        $script:SharedConfig.prompts.videoSource
+        "$($script:SharedConfig.prompts.videoSource) or absolute local video path"
     }
     while ($true) {
         $source = (Read-Host $sourcePrompt).Trim()

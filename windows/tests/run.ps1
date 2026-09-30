@@ -93,6 +93,19 @@ Assert-Equal `
     (Get-KioskStatusEndpoint "https://example.test/api/register-totem?old=1") `
     "Status reporting should replace the final registration path."
 
+$localVideo = Join-Path ([IO.Path]::GetTempPath()) ("kiosk-local-video-" + [guid]::NewGuid() + '.mp4')
+try {
+    Set-Content -Encoding ASCII -Path $localVideo -Value 'offline video'
+    Assert-Equal $localVideo (Normalize-VideoSource $localVideo) 'Local video paths should be accepted.'
+    $localPlan = New-KioskPlan -Displays @((New-KioskDisplayPlan $displays[0] -Type 'video' -Source $localVideo)) -RustDeskPassword 'secret'
+    Assert-Equal $null (Test-KioskPlan $localPlan) 'Existing local videos should pass validation.'
+    Assert-Equal $localVideo (Resolve-KioskPlan $localPlan).Displays[0].Url 'Local paths should not turn into Dropbox links.'
+    Remove-Item $localVideo
+    Assert-Match 'local video' (Test-KioskPlan $localPlan) 'Missing local videos should be rejected before setup.'
+    [IO.File]::WriteAllBytes($localVideo, [byte[]]::new(0))
+    Assert-Match 'empty' (Test-KioskPlan $localPlan) 'Empty local videos should be rejected.'
+} finally { Remove-Item $localVideo -ErrorAction SilentlyContinue }
+
 $dropboxOne = "https://www.dropbox.com/s/one/one.mp4?dl=0"
 $dropboxTwo = "https://www.dropbox.com/s/two/two.mp4?dl=0"
 
@@ -257,6 +270,16 @@ try {
     $emptyDisplay.Url = Normalize-VideoSource $dropboxOne
     [void] (Install-KioskVideo $emptyDisplay)
     Assert-Equal 'fresh video' ((Get-Content -Raw $emptyDisplay.Path).Trim()) 'Empty cached files must be downloaded again.'
+
+    $offline = Join-Path $runtimeRoot 'offline clip.mp4'
+    Set-Content -Encoding ASCII -Path $offline -Value 'offline video'
+    $offlineDisplay = New-KioskDisplayPlan $displays[0] -Type 'video' -Source $offline
+    $offlineDisplay.Url = Normalize-VideoSource $offline
+    $script:allowVideoDownload = $false
+    [void] (Install-KioskVideo $offlineDisplay)
+    Assert-Equal 'offline video' ((Get-Content -Raw $offlineDisplay.Path).Trim()) 'Local videos must be copied without downloading.'
+    Assert-Equal 'offline video' ((Get-Content -Raw $offline).Trim()) 'The original local video must remain untouched.'
+    Assert-Equal $true ($offlineDisplay.Path -ne $offline) 'The kiosk must use its own copy so the USB drive can be removed.'
 
     $twoVideos.WindowsPassword = 'not-for-settings'
     $twoVideos.RustDeskPassword = 'also-not-for-settings'

@@ -67,17 +67,28 @@ function Install-KioskVideo {
     }
     Remove-Item -Recurse -Force $next -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $next | Out-Null
-    $download = Join-Path $next "video-download"
-    Write-KioskProgress "Downloading video for display $($Display.Number)"
-    $response = Invoke-WebRequest -UseBasicParsing -Uri $Display.Url -OutFile $download -PassThru
-    Assert-KioskVideoContentType ([string] $response.Headers["Content-Type"])
-    $name = [IO.Path]::GetFileName(([uri] $Display.Url).AbsolutePath)
-    $disposition = [string] $response.Headers["Content-Disposition"]
-    if ($disposition -match "filename\*=UTF-8''([^;]+)") { $name = [uri]::UnescapeDataString($matches[1].Trim('"')) }
-    elseif ($disposition -match 'filename="?([^";]+)') { $name = $matches[1] }
-    if (-not $name) { $name = "video.mp4" }
-    $video = Join-Path $next ([IO.Path]::GetFileName($name))
-    Move-Item $download $video
+    if (Test-KioskLocalVideoSource $Display.Url) {
+        if (-not (Test-Path -LiteralPath $Display.Url -PathType Leaf) -or
+            (Get-Item -LiteralPath $Display.Url).Length -eq 0) {
+            throw "Local video file is missing or empty: $($Display.Url)"
+        }
+        $name = [IO.Path]::GetFileName($Display.Url)
+        $video = Join-Path $next $name
+        Write-KioskProgress "Copying local video for display $($Display.Number)"
+        Copy-Item -LiteralPath $Display.Url -Destination $video
+    } else {
+        $download = Join-Path $next "video-download"
+        Write-KioskProgress "Downloading video for display $($Display.Number)"
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $Display.Url -OutFile $download -PassThru
+        Assert-KioskVideoContentType ([string] $response.Headers["Content-Type"])
+        $name = [IO.Path]::GetFileName(([uri] $Display.Url).AbsolutePath)
+        $disposition = [string] $response.Headers["Content-Disposition"]
+        if ($disposition -match "filename\*=UTF-8''([^;]+)") { $name = [uri]::UnescapeDataString($matches[1].Trim('"')) }
+        elseif ($disposition -match 'filename="?([^";]+)') { $name = $matches[1] }
+        if (-not $name) { $name = "video.mp4" }
+        $video = Join-Path $next ([IO.Path]::GetFileName($name))
+        Move-Item $download $video
+    }
     if ((Get-Item $video).Length -eq 0) { throw "Downloaded video file was empty." }
     Remove-Item -Recurse -Force $current -ErrorAction SilentlyContinue
     Move-Item $next $current
