@@ -395,4 +395,45 @@ function Read-KioskSecret {
 Assert-Equal 'Correct' (Read-KioskConfirmedSecret 'RustDesk password') 'The console should retry both entries after a mismatch.'
 Assert-Equal 4 $script:secretPrompts.Count 'Both entries should be requested again after a mismatch.'
 
+# Mock Windows service operations: never install or start a real RustDesk service in tests.
+& {
+    $script:rustdeskService = [pscustomobject]@{ Status = 'Stopped'; StartType = 'Disabled' }
+    $script:serviceInstalls = 0
+    $script:serviceStarts = 0
+    function Get-Service { param([string] $Name, [string] $ErrorAction) $script:rustdeskService }
+    function Set-Service {
+        param([string] $Name, [string] $StartupType, [string] $ErrorAction)
+        $script:rustdeskService.StartType = $StartupType
+    }
+    function Start-Service {
+        param([string] $Name, [string] $ErrorAction)
+        $script:serviceStarts++
+        $script:rustdeskService.Status = 'Running'
+    }
+    function Start-Sleep { param([int] $Seconds) }
+    function fake-rustdesk.exe {
+        $script:serviceInstalls++
+        $script:rustdeskService = [pscustomobject]@{ Status = 'Stopped'; StartType = 'Manual' }
+        $global:LASTEXITCODE = 0
+    }
+    Ensure-KioskRustDeskService 'fake-rustdesk.exe'
+    Assert-Equal 'Automatic' $script:rustdeskService.StartType 'Disabled RustDesk services must start automatically.'
+    Assert-Equal 'Running' $script:rustdeskService.Status 'Stopped RustDesk services must be started.'
+    Assert-Equal 0 $script:serviceInstalls 'Existing services should not be reinstalled.'
+    Ensure-KioskRustDeskService 'fake-rustdesk.exe'
+    Assert-Equal 1 $script:serviceStarts 'Running services should not be started again.'
+
+    $script:rustdeskService = $null
+    Ensure-KioskRustDeskService 'fake-rustdesk.exe'
+    Assert-Equal 1 $script:serviceInstalls 'Missing RustDesk services must be installed.'
+    Assert-Equal 'Automatic' $script:rustdeskService.StartType 'New services must start automatically.'
+
+    function Set-Service { param([string] $Name, [string] $StartupType, [string] $ErrorAction) }
+    $script:rustdeskService.StartType = 'Disabled'
+    Assert-Throws { Ensure-KioskRustDeskService 'fake-rustdesk.exe' } 'Setup must fail if automatic startup cannot be confirmed.'
+    $script:rustdeskService = $null
+    function fake-rustdesk.exe { $global:LASTEXITCODE = 1 }
+    Assert-Throws { Ensure-KioskRustDeskService 'fake-rustdesk.exe' } 'Setup must fail if RustDesk cannot install its service.'
+}
+
 Write-Host "Windows kiosk tests passed."

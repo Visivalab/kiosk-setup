@@ -65,7 +65,7 @@ The wizard configures:
 7. Optional totem registration and five-minute status reporting, both reporting every screen
 8. Launch now, reboot, or do nothing
 
-RustDesk and VLC are installed with `winget` when missing. Webapps are served only on `http://127.0.0.1:8080`.
+RustDesk and VLC are installed with `winget` when missing. Setup installs the RustDesk Windows service if needed, sets it to start automatically, and checks that it is running before configuring unattended access. Cleanup leaves this service unchanged. Webapps are served only on `http://127.0.0.1:8080`.
 
 Nothing is applied until every answer validates, so a bad link on the second screen cannot leave the first one half-configured.
 

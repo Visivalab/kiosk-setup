@@ -62,6 +62,16 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn('Read-KioskConfirmedSecret $script:SharedConfig.prompts.rustdeskPassword', app)
         self.assertIn('function Read-KioskConfirmedSecret', ui)
 
+    def test_rustdesk_service_starts_automatically_before_unattended_setup(self):
+        rustdesk = read("src", "steps", "rustdesk.ps1")
+
+        self.assertIn("Get-Service -Name RustDesk", rustdesk)
+        self.assertIn("--install-service", rustdesk)
+        self.assertIn("Set-Service -Name RustDesk -StartupType Automatic", rustdesk)
+        self.assertIn("Start-Service -Name RustDesk", rustdesk)
+        self.assertIn('Ensure-KioskRustDeskService $rustdesk', rustdesk)
+        self.assertLess(rustdesk.index('Ensure-KioskRustDeskService $rustdesk'), rustdesk.index('--password $Password'))
+
     def test_portable_gui_uses_native_windows_controls(self):
         cmd = (WINDOWS / "kiosk-gui.cmd").read_text(encoding="utf-8")
         gui = read("kiosk-gui.ps1")
