@@ -226,6 +226,46 @@ function New-KioskGuiGroup {
     [pscustomobject]@{ Group = $group; Table = $table }
 }
 
+function New-KioskGuiVideoSource {
+    param([Windows.Forms.TextBox] $Source)
+
+    $row = [Windows.Forms.TableLayoutPanel]::new()
+    $row.AutoSize = $true
+    $row.AutoSizeMode = "GrowAndShrink"
+    $row.RowCount = 1
+    $row.ColumnCount = 2
+    [void] $row.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new([Windows.Forms.SizeType]::Percent, 100))
+    [void] $row.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new([Windows.Forms.SizeType]::AutoSize))
+    $Source.Dock = "Fill"
+    $Source.Margin = [Windows.Forms.Padding]::new(0, 2, 8, 0)
+    $Source.AccessibleName = "Video link or local file path"
+    $row.Controls.Add($Source, 0, 0)
+
+    $browse = [Windows.Forms.Button]::new()
+    $browse.Text = "Browse..."
+    $browse.AutoSize = $true
+    $browse.AccessibleName = "Browse for a local video file"
+    $browse.Margin = [Windows.Forms.Padding]::new(0)
+    $browse.Add_Click({
+        $dialog = [Windows.Forms.OpenFileDialog]::new()
+        try {
+            $dialog.Title = "Choose a video file"
+            $dialog.Filter = "Video files|*.mp4;*.mkv;*.mov;*.avi;*.webm|All files|*.*"
+            $dialog.CheckFileExists = $true
+            $dialog.RestoreDirectory = $true
+            if (Test-KioskLocalVideoSource $Source.Text) {
+                $directory = Split-Path -Parent $Source.Text
+                if (Test-Path -LiteralPath $directory -PathType Container) { $dialog.InitialDirectory = $directory }
+            }
+            if ($dialog.ShowDialog($Source.FindForm()) -eq [Windows.Forms.DialogResult]::OK) {
+                $Source.Text = $dialog.FileName
+            }
+        } finally { $dialog.Dispose() }
+    }.GetNewClosure())
+    $row.Controls.Add($browse, 1, 0)
+    [pscustomobject]@{ Control = $row; Browse = $browse }
+}
+
 function New-KioskGuiRotation {
     $rotation = [Windows.Forms.ComboBox]::new()
     $rotation.DropDownStyle = "DropDownList"
@@ -317,7 +357,8 @@ function Show-KioskGui {
             Add-KioskGuiField $group.Table "Rotation:" $rotationBox
             $sourceBox = [Windows.Forms.TextBox]::new()
             $sourceBox.AccessibleDescription = "Dropbox link or absolute local video path for display $($display.Number)"
-            Add-KioskGuiField $group.Table "Dropbox link or local file:" $sourceBox
+            $videoSource = New-KioskGuiVideoSource $sourceBox
+            Add-KioskGuiField $group.Table "Dropbox link or local file:" $videoSource.Control
             $page.Controls.Add($group.Group)
             [void] $tabs.TabPages.Add($page)
             $sections += [pscustomobject]@{
@@ -345,7 +386,9 @@ function Show-KioskGui {
         $projectType.SelectedIndex = 0
         Add-KioskGuiField $contentGroup.Table "Type:" $projectType
         $sourceBox = [Windows.Forms.TextBox]::new()
-        Add-KioskGuiField $contentGroup.Table "S3 ZIP path:" $sourceBox
+        $videoSource = New-KioskGuiVideoSource $sourceBox
+        $videoSource.Browse.Visible = $false
+        Add-KioskGuiField $contentGroup.Table "S3 ZIP path:" $videoSource.Control
         $sourceLabel = $contentGroup.Table.GetControlFromPosition(0, 1)
         $sourceBox.AccessibleDescription = "Example: $($script:SharedConfig.webappPathExample)"
         Add-KioskGuiRow $root $contentGroup.Group
@@ -482,6 +525,7 @@ function Show-KioskGui {
         $singleType = $sections[0].Type
         $singleSource = $sections[0].Source
         $singleType.Add_SelectedIndexChanged({
+            $videoSource.Browse.Visible = $singleType.SelectedIndex -eq 1
             if ($singleType.SelectedIndex -eq 0) {
                 $sourceLabel.Text = "S3 ZIP path:"
                 $singleSource.AccessibleName = "S3 ZIP path"

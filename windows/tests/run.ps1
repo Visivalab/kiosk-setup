@@ -403,6 +403,12 @@ try {
     Remove-Item -Recurse -Force $guiWork -ErrorAction SilentlyContinue
 }
 
+$sourceBox = [Windows.Forms.TextBox]::new()
+$videoSourceRow = New-KioskGuiVideoSource $sourceBox
+Assert-Equal $sourceBox $videoSourceRow.Control.GetControlFromPosition(0, 0) 'The browsed path must populate the same field used by the plan.'
+Assert-Equal 'Browse...' $videoSourceRow.Browse.Text 'Each video field should offer a file picker.'
+$videoSourceRow.Control.Dispose()
+
 Assert-Equal $null (Test-KioskRustDeskConfirmation 'MySecret' 'MySecret') 'Matching RustDesk passwords should pass.'
 Assert-Match 'match' (Test-KioskRustDeskConfirmation 'MySecret' 'WrongSecret') 'Mismatched RustDesk passwords should fail.'
 Assert-Match 'match' (Test-KioskRustDeskConfirmation 'MySecret' 'mysecret') 'RustDesk passwords must match with exact case.'

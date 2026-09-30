@@ -102,6 +102,16 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("90 deg", shared)
         self.assertNotIn("\u00b0", shared)
 
+    def test_gui_can_browse_local_videos_for_each_display(self):
+        gui = read("kiosk-gui.ps1")
+
+        self.assertIn("function New-KioskGuiVideoSource", gui)
+        self.assertIn("[Windows.Forms.OpenFileDialog]::new()", gui)
+        self.assertIn("$dialog.CheckFileExists = $true", gui)
+        self.assertIn("$Source.Text = $dialog.FileName", gui)
+        self.assertIn("$videoSource = New-KioskGuiVideoSource $sourceBox", gui)
+        self.assertIn("$videoSource.Browse.Visible = $singleType.SelectedIndex -eq 1", gui)
+
     def test_gui_scrolls_on_a_panel_with_auto_sized_rows(self):
         gui = read("kiosk-gui.ps1")
 
