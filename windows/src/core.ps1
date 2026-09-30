@@ -49,6 +49,7 @@ function Save-KioskState {
         [ordered]@{
             number     = $_.Number
             deviceName = $_.DeviceName
+            monitorId  = $_.MonitorId
             rotation   = $_.Rotation
             type       = $_.Type
             source     = $_.Source

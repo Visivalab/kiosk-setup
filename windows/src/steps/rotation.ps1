@@ -11,6 +11,7 @@ function Get-KioskDisplays {
         }
         Add-Type -AssemblyName System.Windows.Forms
         $Screens = [System.Windows.Forms.Screen]::AllScreens
+        Initialize-RotationApi
     }
 
     $all = @($Screens)
@@ -31,6 +32,9 @@ function Get-KioskDisplays {
             Number     = $number
             Index      = [int] $indexes[[string] $_.DeviceName]
             DeviceName = [string] $_.DeviceName
+            MonitorId  = if ($PSBoundParameters.ContainsKey('Screens')) {
+                [string] $_.MonitorId
+            } else { [KioskDisplay]::GetMonitorId([string] $_.DeviceName) }
             Primary    = [bool] $_.Primary
             X          = [int] $_.Bounds.X
             Y          = [int] $_.Bounds.Y
@@ -90,6 +94,28 @@ public static class KioskDisplay {
         public int dmReserved2;
         public int dmPanningWidth;
         public int dmPanningHeight;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct DISPLAY_DEVICE {
+        public int cb;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+        public int StateFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "EnumDisplayDevicesW")]
+    static extern bool EnumDisplayDevices(string deviceName, int index, ref DISPLAY_DEVICE device, int flags);
+
+    public static string GetMonitorId(string deviceName) {
+        const int EDD_GET_DEVICE_INTERFACE_NAME = 1;
+        var device = new DISPLAY_DEVICE();
+        device.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+        if (!EnumDisplayDevices(deviceName, 0, ref device, EDD_GET_DEVICE_INTERFACE_NAME))
+            return "";
+        return device.DeviceID ?? "";
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Ansi)]

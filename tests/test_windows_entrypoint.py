@@ -18,12 +18,49 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("powershell.exe", script.lower())
         self.assertIn('"%~dp0kiosk.ps1"', script)
 
+    def test_successful_setup_does_not_show_a_redundant_modal(self):
+        gui = read("kiosk-gui.ps1")
+        success = gui[gui.index('if (Test-KioskGuiOperationSucceeded $script:GuiOperation'):]
+        success = success[:success.index('if ($script:GuiProcess.ExitCode -eq 0)')]
+
+        self.assertIn('$status.AppendText("`r`n$what completed.")', success)
+        self.assertIn('if ($script:GuiOperation -ne "setup") {', success)
+        self.assertLess(success.index('if ($script:GuiOperation -ne "setup") {'), success.index('MessageBox]::Show("$what completed.'))
+        self.assertIn('MessageBox]::Show("$what failed.', gui)
+
     def test_gui_keeps_diagnostics_when_worker_fails_without_stderr(self):
         gui = read("kiosk-gui.ps1")
 
         self.assertIn('if (-not $errorText)', gui)
         self.assertIn('Logs saved in $script:GuiWork', gui)
         self.assertIn('if ($script:GuiProcess.ExitCode -eq 0)', gui)
+        self.assertIn('"setup-complete"', gui)
+        self.assertIn('function Test-KioskGuiOperationSucceeded', gui)
+        self.assertIn('if (Test-KioskGuiOperationSucceeded $script:GuiOperation', gui)
+
+    def test_gui_restores_last_non_secret_answers_before_showing_the_form(self):
+        gui = read("kiosk-gui.ps1")
+
+        for name in ("Save-KioskGuiSettings", "Get-KioskGuiDefaults", "Get-KioskGuiDisplaySettings"):
+            self.assertIn(f"function {name}", gui)
+        self.assertIn("Save-KioskGuiSettings $plan", gui)
+        self.assertIn("$defaults = Get-KioskGuiDefaults", gui)
+        self.assertLess(gui.index("$defaults = Get-KioskGuiDefaults"), gui.index("[Windows.Forms.Application]::Run($form)"))
+        self.assertLess(gui.index("Save-KioskGuiSettings $plan"), gui.index("$script:GuiProcess = Start-Process powershell.exe"))
+
+    def test_rustdesk_password_requires_masked_confirmation_before_setup(self):
+        gui = read("kiosk-gui.ps1")
+        app = read("src", "app.ps1")
+        ui = read("src", "ui.ps1")
+
+        self.assertIn('$rustDeskConfirmation.UseSystemPasswordChar = $true', gui)
+        self.assertIn('Test-KioskRustDeskConfirmation $rustDeskPassword.Text $rustDeskConfirmation.Text', gui)
+        self.assertLess(gui.index('Test-KioskRustDeskConfirmation $rustDeskPassword.Text'), gui.index('Save-KioskGuiSettings $plan'))
+        start = gui.index('$configPath = Join-Path $script:GuiWork "setup.json"')
+        config = gui[start:gui.index('$script:GuiOperation = "setup"', start)]
+        self.assertNotIn('rustDeskConfirmation', config)
+        self.assertIn('Read-KioskConfirmedSecret $script:SharedConfig.prompts.rustdeskPassword', app)
+        self.assertIn('function Read-KioskConfirmedSecret', ui)
 
     def test_portable_gui_uses_native_windows_controls(self):
         cmd = (WINDOWS / "kiosk-gui.cmd").read_text(encoding="utf-8")
@@ -137,13 +174,28 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn('"video\\display-$($Display.Number)"', video)
         self.assertNotIn("Set-KioskStartup", video)
 
-    def test_startup_orchestrator_places_and_synchronises_players(self):
+    def test_video_follows_physical_monitor_when_windows_display_numbers_change(self):
+        rotation = read("src", "steps", "rotation.ps1")
+        plan = read("src", "plan.ps1")
+        startup = read("src", "steps", "startup.ps1")
+        gui = read("kiosk-gui.ps1")
+
+        self.assertIn("EDD_GET_DEVICE_INTERFACE_NAME", rotation)
+        self.assertIn("MonitorId  =", plan)
+        self.assertIn("monitorId = $_.MonitorId", startup)
+        self.assertIn("Get-KioskMonitorId $Screens[$index].DeviceName", startup)
+        self.assertIn('if ($matches.Count -eq 1)', startup)
+        self.assertIn("$Display.MonitorId", gui)
+        self.assertIn("monitorId = $_.MonitorId", gui)
+
+    def test_startup_orchestrator_places_independent_repeating_players(self):
         startup = read("src", "steps", "startup.ps1")
         app = read("src", "app.ps1")
 
         self.assertIn("kiosk-start.ps1", startup)
         self.assertIn("--qt-fullscreen-screennumber", startup)
-        self.assertIn("--start-paused", startup)
+        self.assertIn("--repeat", startup)
+        self.assertNotIn("--start-paused", startup)
         self.assertIn("Get-KioskScreenNumber", startup)
         self.assertIn("AllScreens", startup)
         self.assertIn("Set-KioskStartup $launcher", app)

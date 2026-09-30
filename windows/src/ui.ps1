@@ -36,6 +36,25 @@ function Read-KioskSecret {
     }
 }
 
+function Test-KioskRustDeskConfirmation {
+    param([string] $Password, [string] $Confirmation)
+    if (-not [string]::Equals($Password, $Confirmation, [StringComparison]::Ordinal)) {
+        return "RustDesk passwords do not match. Re-enter both values."
+    }
+    $null
+}
+
+function Read-KioskConfirmedSecret {
+    param([string] $Prompt)
+    while ($true) {
+        $password = Read-KioskSecret $Prompt
+        $confirmation = Read-KioskSecret "Confirm RustDesk password"
+        $message = Test-KioskRustDeskConfirmation $password $confirmation
+        if (-not $message) { return $password }
+        Write-Host "WARN: $message" -ForegroundColor Yellow
+    }
+}
+
 function Read-KioskConfirmation {
     param([string] $Prompt, [bool] $Default = $true)
     $suffix = if ($Default) { "[Y/n]" } else { "[y/N]" }

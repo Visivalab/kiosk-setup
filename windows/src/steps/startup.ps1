@@ -17,10 +17,10 @@ function Write-KioskOrchestrator {
         [ordered]@{
             number   = $_.Number
             device   = $_.DeviceName
+            monitorId = $_.MonitorId
             type     = $_.Type
             path     = $_.Path
             launcher = $_.Launcher
-            rcPort   = 9010 + $_.Number
             audio    = [bool] $_.Audio
         }
     })
@@ -38,15 +38,49 @@ function Write-KioskOrchestrator {
 
     $body = @'
 Add-Type -AssemblyName System.Windows.Forms
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class KioskMonitorIdentity {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct DISPLAY_DEVICE {
+        public int cb;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceString;
+        public int StateFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceID;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string DeviceKey;
+    }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "EnumDisplayDevicesW")]
+    static extern bool EnumDisplayDevices(string deviceName, int index, ref DISPLAY_DEVICE device, int flags);
+    public static string GetId(string deviceName) {
+        var device = new DISPLAY_DEVICE();
+        device.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+        if (!EnumDisplayDevices(deviceName, 0, ref device, 1)) return "";
+        return device.DeviceID ?? "";
+    }
+}
+"@
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
 
-function Get-KioskScreenNumber {
+function Get-KioskMonitorId {
     param([string] $DeviceName)
-    $screens = @([System.Windows.Forms.Screen]::AllScreens)
-    for ($index = 0; $index -lt $screens.Count; $index++) {
-        if ($screens[$index].DeviceName -eq $DeviceName) { return $index }
+    [KioskMonitorIdentity]::GetId($DeviceName)
+}
+
+function Get-KioskScreenNumber {
+    param([string] $DeviceName, [string] $MonitorId, [object[]] $Screens = @([System.Windows.Forms.Screen]::AllScreens))
+    $matches = @()
+    for ($index = 0; $index -lt $Screens.Count; $index++) {
+        if ($MonitorId) {
+            if ((Get-KioskMonitorId $Screens[$index].DeviceName) -eq $MonitorId) { $matches += $index }
+        } elseif ($Screens[$index].DeviceName -eq $DeviceName) {
+            # Legacy launcher: reconfigure to save physical monitor identities.
+            $matches += $index
+        }
     }
-    throw "Configured display $DeviceName is no longer part of the extended desktop. Check Windows display settings."
+    if ($matches.Count -eq 1) { return $matches[0] }
+    throw "Configured monitor $MonitorId ($DeviceName) is missing or ambiguous. Refusing to play on another screen."
 }
 
 function Test-KioskAudioDevice {
@@ -62,15 +96,15 @@ function Test-KioskAudioDevice {
 }
 
 function Start-KioskPlayer {
-    param([object] $Item, [bool] $Paused)
+    param([object] $Item)
 
     if ($Item.type -eq "webapp") {
         $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $Item.launcher
         return Start-Process powershell.exe -ArgumentList $arguments -PassThru
     }
     $arguments = @(
-        "--no-one-instance", "--fullscreen", "--loop", "--no-video-title-show", "--no-qt-fs-controller", "--mouse-hide-timeout=0",
-        ("--qt-fullscreen-screennumber={0}" -f (Get-KioskScreenNumber $Item.device))
+        "--no-one-instance", "--fullscreen", "--repeat", "--no-video-title-show", "--no-qt-fs-controller", "--mouse-hide-timeout=0",
+        ("--qt-fullscreen-screennumber={0}" -f (Get-KioskScreenNumber -DeviceName $Item.device -MonitorId $Item.monitorId))
     )
     if ($Item.audio) {
         if (Test-KioskAudioDevice $audioDevice) {
@@ -78,9 +112,6 @@ function Start-KioskPlayer {
         }
     } else {
         $arguments += "--no-audio"
-    }
-    if ($Paused) {
-        $arguments += @("--start-paused", "--extraintf", "rc", "--rc-host", ("127.0.0.1:{0}" -f $Item.rcPort))
     }
     # Start-Process joins ArgumentList with spaces; quote the path for Windows command-line parsing.
     $arguments += ('"{0}"' -f $Item.path)
@@ -93,60 +124,14 @@ function Save-KioskPlayerState {
         Set-Content -Encoding UTF8 (Join-Path $stateDir ("display-{0}.json" -f $Item.number))
 }
 
-function Connect-KioskPlayers {
-    param([object[]] $Items, [int] $TimeoutSeconds = 30)
-
-    $clients = @()
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    foreach ($item in $Items) {
-        $client = $null
-        while (-not $client -and (Get-Date) -lt $deadline) {
-            try {
-                $candidate = [Net.Sockets.TcpClient]::new()
-                $candidate.Connect("127.0.0.1", [int] $item.rcPort)
-                $client = $candidate
-            } catch {
-                Start-Sleep -Milliseconds 200
-            }
-        }
-        if (-not $client) {
-            foreach ($open in $clients) { $open.Dispose() }
-            return @()
-        }
-        $clients += $client
-    }
-    $clients
-}
-
 $failureLog = Join-Path $stateDir "kiosk-start-error.log"
 Remove-Item $failureLog -Force -ErrorAction SilentlyContinue
 try {
-$videos = @($items | Where-Object { $_.type -eq "video" })
-$synchronised = $videos.Count -gt 1
 $started = @()
 foreach ($item in $items) {
-    $process = Start-KioskPlayer $item $synchronised
+    $process = Start-KioskPlayer $item
     Save-KioskPlayerState $item $process
     $started += [pscustomobject]@{ Item = $item; Process = $process }
-}
-
-if ($synchronised) {
-    $clients = @(Connect-KioskPlayers $videos)
-    if ($clients.Count -eq $videos.Count) {
-        $release = [Text.Encoding]::ASCII.GetBytes("play`r`n")
-        foreach ($client in $clients) { $client.GetStream().Write($release, 0, $release.Length) }
-        foreach ($client in $clients) { $client.GetStream().Flush(); $client.Dispose() }
-    } else {
-        foreach ($entry in $started) {
-            if ($entry.Item.type -eq "video") { Stop-Process -Id $entry.Process.Id -Force -ErrorAction SilentlyContinue }
-        }
-        $started = @($started | Where-Object { $_.Item.type -ne "video" })
-        foreach ($item in $videos) {
-            $process = Start-KioskPlayer $item $false
-            Save-KioskPlayerState $item $process
-            $started += [pscustomobject]@{ Item = $item; Process = $process }
-        }
-    }
 }
 
 $ids = @($started | ForEach-Object { $_.Process.Id })

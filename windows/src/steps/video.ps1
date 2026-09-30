@@ -28,6 +28,29 @@ function Assert-KioskVideoContentType {
     }
 }
 
+function Get-KioskCachedVideo {
+    param([object] $Display, [string] $Current)
+
+    $state = Get-KioskState
+    if (-not $state) { return $null }
+    $directory = [IO.Path]::GetFullPath($Current)
+    foreach ($saved in @($state.displays)) {
+        if ([int] $saved.number -ne $Display.Number -or
+            [string] $saved.deviceName -ne $Display.DeviceName -or
+            [string] $saved.type -ne 'video') { continue }
+        try {
+            if ((Normalize-VideoSource ([string] $saved.source)) -cne $Display.Url) { continue }
+            $path = [IO.Path]::GetFullPath([string] $saved.path)
+        } catch { continue }
+        if (-not [string]::Equals([IO.Path]::GetDirectoryName($path), $directory,
+                [StringComparison]::OrdinalIgnoreCase)) { continue }
+        if ((Test-Path -LiteralPath $path -PathType Leaf) -and (Get-Item -LiteralPath $path).Length -gt 0) {
+            return $path
+        }
+    }
+    $null
+}
+
 function Install-KioskVideo {
     param([Parameter(Mandatory = $true)][object] $Display)
 
@@ -36,6 +59,12 @@ function Install-KioskVideo {
     $videoRoot = Join-Path (Get-KioskRoot) "video\display-$($Display.Number)"
     $next = Join-Path $videoRoot "next"
     $current = Join-Path $videoRoot "current"
+    $cached = Get-KioskCachedVideo $Display $current
+    if ($cached) {
+        $Display.Path = $cached
+        Write-KioskDone "reusing the existing video for display $($Display.Number) at $cached."
+        return $Display
+    }
     Remove-Item -Recurse -Force $next -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $next | Out-Null
     $download = Join-Path $next "video-download"

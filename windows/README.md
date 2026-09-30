@@ -23,7 +23,7 @@ Download and extract the repository ZIP, then double-click:
 windows\kiosk-gui.cmd
 ```
 
-Accept the Windows administrator prompt. The visual wizard keeps passwords masked and encrypts them while handing setup work to the background process.
+Accept the Windows administrator prompt. The visual wizard pre-fills previous display links, rotations, audio choice and other non-secret answers by physical monitor identity. Older multi-display setups saved only Windows `DISPLAY` numbers, which can change after a reboot: on the first run after upgrading, review each physical screen and re-enter its video link rather than trusting the old numbering. Subsequent runs can reuse the saved monitor identities. The last GUI answers are kept in `%LOCALAPPDATA%\pi-kiosk\gui-settings.json` and removed by cleanup. Passwords are never saved in that file: enter the RustDesk password (and the Windows account password, if applicable) again. Passwords remain masked and are encrypted while handed to the background process.
 
 ## Remove the kiosk configuration
 
@@ -91,13 +91,11 @@ A chosen output device is re-checked at playback. If it is gone — unplugged, d
 
 ## Several displays
 
-One entry in the Startup folder runs `bin\kiosk-start.ps1`, which starts every screen. Each player is bound to its screen by Windows device name, resolved at login rather than baked in as pixel coordinates, so re-rotating or re-arranging the monitors later does not send a video to the wrong screen.
+One entry in the Startup folder runs `bin\kiosk-start.ps1`, which starts every screen. Each player is bound to its physical monitor interface ID, resolved against the current Windows display names at login rather than relying on `DISPLAY1`/`DISPLAY2`. If a configured monitor is absent or cannot be identified uniquely, startup logs an error instead of deliberately assigning its video to another screen. An existing installation needs to be configured again once to save these monitor IDs.
 
-Two or more videos start together: VLC is launched paused on every screen and released over its local control interface once all of them are ready. If any player fails to answer within 30 seconds, the orchestrator restarts them all without the pause rather than leaving a screen frozen.
+VLC starts each video without pausing and repeats that file independently. The players launch in quick succession but are not frame-synchronised; different durations drift apart over time. Re-runs reuse an existing nonempty video when the saved display, device and Dropbox link match. A changed link or missing file triggers a new download.
 
-Videos loop independently. Different durations drift apart over time by design; only the start is synchronised.
-
-The Windows password prompt accepts an empty value only for a local account that has no password. Enter the account password—not a Windows Hello PIN—when a password exists. Passwordless local accounts use Windows' native `AutoAdminLogon`; other accounts use the temporary official Sysinternals Autologon utility.
+The Windows password prompt accepts an empty value only for a local account that has no password. Enter the account password—not a Windows Hello PIN—when a password exists. Passwordless local accounts use Windows' native `AutoAdminLogon`; other accounts use the temporary official Sysinternals Autologon utility. The RustDesk password must be entered twice, with an exact match, in both the visual and console wizards.
 
 ## Layout
 

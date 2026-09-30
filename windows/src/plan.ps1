@@ -15,6 +15,7 @@ function New-KioskDisplayPlan {
         Number     = [int] $Display.Number
         Index      = [int] $Display.Index
         DeviceName = [string] $Display.DeviceName
+        MonitorId  = [string] $Display.MonitorId
         Primary    = [bool] $Display.Primary
         Width      = [int] $Display.Width
         Height     = [int] $Display.Height
@@ -64,6 +65,13 @@ function Test-KioskPlan {
 
     $displays = @($Plan.Displays)
     if ($displays.Count -eq 0) { return "No active displays were detected." }
+    if ($displays.Count -gt 1) {
+        $ids = @($displays | ForEach-Object { $_.MonitorId })
+        if (@($ids | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0 -or
+            @($ids | Select-Object -Unique).Count -ne $displays.Count) {
+            return "Windows could not uniquely identify every physical monitor. Nothing was changed."
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($Plan.RustDeskPassword)) { return "Enter a RustDesk password." }
     if ($Plan.FinalAction -notin $script:KioskFinalActions) { return "Choose what to do after setup." }
 

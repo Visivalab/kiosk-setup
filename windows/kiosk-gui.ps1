@@ -23,13 +23,87 @@ function Unprotect-KioskGuiSecret {
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
 }
 
+function Get-KioskGuiValue {
+    param([object] $Source, [string] $Name, $Fallback)
+    if ($null -ne $Source -and $Source.PSObject.Properties.Name -contains $Name) { return $Source.$Name }
+    $Fallback
+}
+
+function Get-KioskGuiDefaults {
+    $path = Join-Path (Get-KioskRoot) "gui-settings.json"
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        try {
+            $settings = Get-Content -Raw -Encoding UTF8 -LiteralPath $path | ConvertFrom-Json
+            if ($settings.version -eq 1 -and $settings.PSObject.Properties.Name -contains "displays") {
+                return $settings
+            }
+        } catch { } # A damaged settings file must not prevent the wizard from opening.
+    }
+    $state = Get-KioskState
+    if (-not $state) { return $null }
+    $displays = @(Get-KioskGuiValue $state "displays" @())
+    $audioDisplay = [int] (Get-KioskGuiValue $state "audioDisplay" 0)
+    $audioSource = @($displays | Where-Object { $_.number -eq $audioDisplay } | Select-Object -First 1)
+    [pscustomobject]@{
+        displays = $displays
+        audioDisplay = $audioDisplay
+        audioSourceDevice = if ($audioSource.Count) { [string] $audioSource[0].deviceName } else { "" }
+        audioSourceMonitorId = if ($audioSource.Count) { [string] (Get-KioskGuiValue $audioSource[0] 'monitorId' '') } else { "" }
+        audioDevice = [string] (Get-KioskGuiValue $state "audioDevice" "")
+        registerTotem = $false
+        totemName = ""
+        totemDescription = ""
+        totemLocation = ""
+        finalAction = "launch"
+    }
+}
+
+function Get-KioskGuiDisplaySettings {
+    param([object] $Defaults, [object] $Display)
+    if (-not $Defaults) { return $null }
+    $entries = @($Defaults.displays)
+    if ($Display.MonitorId) {
+        $matched = @($entries | Where-Object { (Get-KioskGuiValue $_ 'monitorId' '') -eq $Display.MonitorId })
+        if ($matched.Count -eq 1) { return $matched[0] }
+    }
+    # Old multi-display settings only have DISPLAY numbers; they may have swapped at reboot.
+    if ($entries.Count -gt 1 -or $Display.MonitorId) { return $null }
+    @($entries | Where-Object { $_.deviceName -eq $Display.DeviceName } | Select-Object -First 1) |
+        Select-Object -First 1
+}
+
+function Save-KioskGuiSettings {
+    param([Parameter(Mandatory = $true)][object] $Plan)
+
+    # Dropbox links are already recorded in kiosk-state.json; never persist account passwords here.
+    $audioSource = @(@($Plan.Displays) | Where-Object { $_.Number -eq $Plan.AudioDisplay } | Select-Object -First 1)
+    $settings = [ordered]@{
+        version = 1
+        displays = @(@($Plan.Displays) | ForEach-Object {
+            @{ deviceName = $_.DeviceName; monitorId = $_.MonitorId; rotation = $_.Rotation; type = $_.Type; source = $_.Source }
+        })
+        audioDisplay = $Plan.AudioDisplay
+        audioSourceDevice = if ($audioSource.Count) { [string] $audioSource[0].DeviceName } else { "" }
+        audioSourceMonitorId = if ($audioSource.Count) { [string] $audioSource[0].MonitorId } else { "" }
+        audioDevice = $Plan.AudioDevice
+        registerTotem = $Plan.Register
+        totemName = $Plan.TotemName
+        totemDescription = $Plan.TotemDescription
+        totemLocation = $Plan.TotemLocation
+        finalAction = $Plan.FinalAction
+    }
+    $settings | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path (Join-Path (Get-KioskRoot) "gui-settings.json")
+}
+
 function ConvertFrom-KioskGuiConfig {
     param([Parameter(Mandatory = $true)][object] $Config, [object[]] $Detected)
 
     $planned = @()
     foreach ($entry in @($Config.displays)) {
         $match = @(@($Detected) | Where-Object { $_.DeviceName -eq [string] $entry.deviceName })
-        if ($match.Count -ne 1) {
+        $monitorId = [string] (Get-KioskGuiValue $entry 'monitorId' '')
+        if ($match.Count -ne 1 -or
+            ($monitorId -and $match[0].MonitorId -ne $monitorId)) {
             throw "The connected displays changed since the wizard opened. Nothing was changed."
         }
         $planned += New-KioskDisplayPlan $match[0] `
@@ -59,6 +133,8 @@ function Invoke-KioskGuiSetup {
         $config = Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
         $plan = ConvertFrom-KioskGuiConfig $config (Get-KioskDisplays)
         Invoke-KioskPlan $plan
+        # The child launcher runs independently; record that the setup worker finished its own work.
+        Set-Content -Encoding ASCII -Path (Join-Path (Split-Path $ConfigPath -Parent) "setup-complete") -Value "ok"
         return 0
     } catch {
         [Console]::Error.WriteLine($_.Exception.Message)
@@ -162,6 +238,14 @@ function New-KioskGuiRotation {
     $rotation
 }
 
+function Test-KioskGuiOperationSucceeded {
+    param([string] $Operation, [int] $ExitCode, [AllowEmptyString()][string] $ErrorText, [string] $WorkDir)
+
+    if ($ExitCode -eq 0) { return $true }
+    $Operation -eq "setup" -and -not $ErrorText -and
+        (Test-Path -LiteralPath (Join-Path $WorkDir "setup-complete") -PathType Leaf)
+}
+
 function Show-KioskGui {
     [Windows.Forms.Application]::EnableVisualStyles()
     $script:SharedConfig = Get-KioskSharedConfig
@@ -208,7 +292,7 @@ function Show-KioskGui {
 
     $intro = [Windows.Forms.Label]::new()
     $intro.Text = if ($multiple) {
-        "$($displays.Count) displays detected. Each one plays its own looping video and they start together. Review the settings, then select Configure kiosk."
+        "$($displays.Count) displays detected. Each one plays its own looping video and starts on its own screen. Review the settings, then select Configure kiosk."
     } else {
         "Review the settings, then select Configure kiosk."
     }
@@ -318,6 +402,9 @@ function Show-KioskGui {
     $rustDeskPassword = [Windows.Forms.TextBox]::new()
     $rustDeskPassword.UseSystemPasswordChar = $true
     Add-KioskGuiField $accountGroup.Table "RustDesk password:" $rustDeskPassword
+    $rustDeskConfirmation = [Windows.Forms.TextBox]::new()
+    $rustDeskConfirmation.UseSystemPasswordChar = $true
+    Add-KioskGuiField $accountGroup.Table "Confirm RustDesk password:" $rustDeskConfirmation
     Add-KioskGuiRow $root $accountGroup.Group
 
     $registrationGroup = New-KioskGuiGroup "Registration"
@@ -419,6 +506,48 @@ function Show-KioskGui {
         }
     })
 
+    $defaults = Get-KioskGuiDefaults
+    if ($defaults) {
+        foreach ($section in $sections) {
+            $saved = Get-KioskGuiDisplaySettings $defaults $section.Display
+            if (-not $saved) { continue }
+            $rotationIndex = @("none", "clockwise", "counterclockwise").IndexOf(
+                [string] (Get-KioskGuiValue $saved "rotation" "")
+            )
+            if ($rotationIndex -ge 0) { $section.Rotation.SelectedIndex = $rotationIndex }
+            $type = [string] (Get-KioskGuiValue $saved "type" "")
+            if ($section.Type -and $type -in @("webapp", "video")) {
+                $section.Type.SelectedIndex = @("webapp", "video").IndexOf($type)
+            }
+            if ($type -eq "video" -or ($section.Type -and $type -eq "webapp")) {
+                $section.Source.Text = [string] (Get-KioskGuiValue $saved "source" "")
+            }
+        }
+        if ($multiple) {
+            $audioMonitor = [string] (Get-KioskGuiValue $defaults 'audioSourceMonitorId' '')
+            for ($index = 0; $index -lt $displays.Count; $index++) {
+                if ($audioMonitor -and $displays[$index].MonitorId -eq $audioMonitor) {
+                    $audioSource.SelectedIndex = $index
+                    break
+                }
+            }
+            $audioId = [string] (Get-KioskGuiValue $defaults "audioDevice" "")
+            for ($index = 0; $index -lt $audioDevices.Count; $index++) {
+                if ($audioDevices[$index].Id -eq $audioId) { $audioOutput.SelectedIndex = $index + 1; break }
+            }
+        }
+        $registerTotem.Checked = [bool] (Get-KioskGuiValue $defaults "registerTotem" $true)
+        foreach ($control in @($totemName, $totemDescription, $totemLocation)) {
+            $control.Enabled = $registerTotem.Checked
+        }
+        $totemName.Text = [string] (Get-KioskGuiValue $defaults "totemName" "")
+        $totemDescription.Text = [string] (Get-KioskGuiValue $defaults "totemDescription" "")
+        $totemLocation.Text = [string] (Get-KioskGuiValue $defaults "totemLocation" "")
+        $actionIndex = @("launch", "reboot", "nothing").IndexOf([string] (Get-KioskGuiValue $defaults "finalAction" ""))
+        if ($actionIndex -ge 0) { $finalAction.SelectedIndex = $actionIndex }
+        $status.Text = "Previous settings loaded. Re-enter the passwords before configuring."
+    }
+
     $timer = [Windows.Forms.Timer]::new()
     $timer.Interval = 300
     $timer.Add_Tick({
@@ -435,10 +564,16 @@ function Show-KioskGui {
                 "registration" { "Registration" }
                 default { "Setup" }
             }
-            if ($script:GuiProcess.ExitCode -eq 0) {
+            if (Test-KioskGuiOperationSucceeded $script:GuiOperation $script:GuiProcess.ExitCode $errorText $script:GuiWork) {
                 $status.AppendText("`r`n$what completed.")
-                [void] [Windows.Forms.MessageBox]::Show("$what completed.", "Kiosk setup", "OK", "Information")
-                Remove-Item -Recurse -Force $script:GuiWork -ErrorAction SilentlyContinue
+                if ($script:GuiOperation -ne "setup") {
+                    [void] [Windows.Forms.MessageBox]::Show("$what completed.", "Kiosk setup", "OK", "Information")
+                }
+                if ($script:GuiProcess.ExitCode -eq 0) {
+                    Remove-Item -Recurse -Force $script:GuiWork -ErrorAction SilentlyContinue
+                } else {
+                    $status.AppendText("`r`nWorker exit code $($script:GuiProcess.ExitCode); logs saved in $script:GuiWork")
+                }
             } else {
                 if (-not $errorText) {
                     $errorText = "$what exited with code $($script:GuiProcess.ExitCode) without an error message."
@@ -485,9 +620,20 @@ function Show-KioskGui {
             -FinalAction @("launch", "reboot", "nothing")[$finalAction.SelectedIndex]
 
         $validationError = Test-KioskPlan $plan
+        if (-not $validationError) {
+            $validationError = Test-KioskRustDeskConfirmation $rustDeskPassword.Text $rustDeskConfirmation.Text
+        }
         if ($validationError) {
             $status.Text = $validationError
             [void] [Windows.Forms.MessageBox]::Show($validationError, "Check the settings", "OK", "Warning")
+            return
+        }
+
+        try { Save-KioskGuiSettings $plan }
+        catch {
+            $message = "Could not save the last settings: $($_.Exception.Message)"
+            $status.Text = $message
+            [void] [Windows.Forms.MessageBox]::Show($message, "Kiosk setup", "OK", "Error")
             return
         }
 
@@ -508,7 +654,7 @@ function Show-KioskGui {
             audioDevice = $plan.AudioDevice
             audioDeviceName = $plan.AudioDeviceName
             displays = @(@($plan.Displays) | ForEach-Object {
-                @{ number = $_.Number; deviceName = $_.DeviceName; rotation = $_.Rotation; type = $_.Type; source = $_.Source }
+                @{ number = $_.Number; deviceName = $_.DeviceName; monitorId = $_.MonitorId; rotation = $_.Rotation; type = $_.Type; source = $_.Source }
             })
         } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 $configPath
         $script:GuiOperation = "setup"

@@ -81,7 +81,7 @@ function Read-KioskPlan {
 
     $videoOnly = @($Displays).Count -gt 1
     if ($videoOnly) {
-        Write-Host "Multiple displays detected. Each display gets its own looping video; they start together."
+        Write-Host "Multiple displays detected. Each display gets its own looping video."
         Write-Host ""
     }
     $planned = @(@($Displays) | ForEach-Object { Read-KioskDisplayPlan $_ $videoOnly })
@@ -106,7 +106,7 @@ function Read-KioskPlan {
     }
 
     $windowsPassword = Read-KioskSecret "Windows password for $env:USERDOMAIN\$env:USERNAME. Use the account password, not the PIN. Leave blank only if this local account has no password" -AllowEmpty
-    $rustdeskPassword = Read-KioskSecret $script:SharedConfig.prompts.rustdeskPassword
+    $rustdeskPassword = Read-KioskConfirmedSecret $script:SharedConfig.prompts.rustdeskPassword
 
     $register = Read-KioskConfirmation $script:SharedConfig.prompts.registerTotem $true
     $name = ""
