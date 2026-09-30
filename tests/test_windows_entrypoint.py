@@ -72,6 +72,22 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn('Ensure-KioskRustDeskService $rustdesk', rustdesk)
         self.assertLess(rustdesk.index('Ensure-KioskRustDeskService $rustdesk'), rustdesk.index('--password $Password'))
 
+    def test_gui_can_skip_rustdesk_without_blocking_registration(self):
+        gui = read("kiosk-gui.ps1")
+        plan = read("src", "plan.ps1")
+        app = read("src", "app.ps1")
+        registration = read("src", "steps", "registration.ps1")
+
+        self.assertIn('$skipRustDesk.Text = "Skip RustDesk (no remote access)"', gui)
+        self.assertIn('$rustDeskPassword.Enabled = -not $skipRustDesk.Checked', gui)
+        self.assertIn('$plan.SkipRustDesk', gui)
+        self.assertIn('skipRustDesk = $plan.SkipRustDesk', gui)
+        self.assertIn('-SkipRustDesk ([bool] (Get-KioskGuiValue $Config "skipRustDesk" $false))', gui)
+        self.assertIn('if (-not $Plan.SkipRustDesk -and [string]::IsNullOrWhiteSpace($Plan.RustDeskPassword))', plan)
+        self.assertIn('if ($Plan.SkipRustDesk)', app)
+        self.assertIn('Install-KioskRustDesk $Plan.RustDeskPassword', app)
+        self.assertIn('if ($SkipRustDesk)', registration)
+
     def test_portable_gui_uses_native_windows_controls(self):
         cmd = (WINDOWS / "kiosk-gui.cmd").read_text(encoding="utf-8")
         gui = read("kiosk-gui.ps1")
@@ -237,6 +253,16 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("kiosk-state.json", core)
         self.assertIn("function Save-KioskState", core)
         self.assertIn("Save-KioskState", app)
+
+    def test_failed_video_download_still_attempts_registration(self):
+        app = read("src", "app.ps1")
+
+        self.assertIn("function Install-KioskContent", app)
+        self.assertIn("Install-KioskContent $Plan", app)
+        content = app[app.index("function Install-KioskContent"):app.index("function Read-KioskDisplayPlan")]
+        self.assertIn("catch {", content)
+        self.assertIn("Register-KioskTotem", content)
+        self.assertIn("throw $contentError", content)
 
     def test_registration_reports_every_screen(self):
         registration = read("src", "steps", "registration.ps1")

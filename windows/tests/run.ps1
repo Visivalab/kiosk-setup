@@ -156,6 +156,21 @@ $noPassword = New-TestPlan @(
 )
 $noPassword.RustDeskPassword = ""
 Assert-Equal "Enter a RustDesk password." (Test-KioskPlan $noPassword) "A RustDesk password should be required."
+$noPassword.SkipRustDesk = $true
+Assert-Equal $null (Test-KioskPlan $noPassword) 'Skipping RustDesk should not require its password.'
+$fromGui = ConvertFrom-KioskGuiConfig ([pscustomobject]@{
+    displays = @([pscustomobject]@{
+        deviceName = $displays[0].DeviceName; monitorId = $displays[0].MonitorId
+        rotation = 'none'; type = 'video'; source = $dropboxOne
+    })
+    windowsPassword = ''; rustDeskPassword = ''; skipRustDesk = $true
+    registerTotem = $true; totemName = 'Lobby'; totemDescription = ''; totemLocation = ''
+    finalAction = 'nothing'; audioDisplay = 0; audioDevice = ''; audioDeviceName = ''
+}) @($displays[0])
+Assert-Equal $true $fromGui.SkipRustDesk 'The GUI worker must receive the skip choice.'
+Assert-Equal '' (New-KioskPlan -SkipRustDesk $true -RustDeskPassword 'unused').RustDeskPassword 'Skipped RustDesk passwords must be discarded.'
+Assert-Equal $null (Test-KioskPlan $fromGui) 'The GUI worker should accept a skipped RustDesk password.'
+Assert-Equal $true $noPassword.Register 'Skipping remote access must not disable totem registration.'
 
 $unnamed = New-TestPlan @(
     (New-KioskDisplayPlan $displays[0] -Rotation "none" -Type "video" -Source $dropboxOne)
@@ -284,6 +299,7 @@ try {
     $twoVideos.WindowsPassword = 'not-for-settings'
     $twoVideos.RustDeskPassword = 'also-not-for-settings'
     $twoVideos.Register = $false
+    $twoVideos.SkipRustDesk = $true
     $twoVideos.TotemName = 'Entrance'
     $twoVideos.TotemDescription = 'North entrance'
     $twoVideos.TotemLocation = 'Lobby'
@@ -298,6 +314,7 @@ try {
     $renamedDisplay = [pscustomobject]@{ DeviceName = 'new-windows-name'; MonitorId = $displays[1].MonitorId }
     Assert-Equal $dropboxTwo (Get-KioskGuiDisplaySettings $savedDefaults $renamedDisplay).source 'A swapped Windows display number must keep its original video.'
     Assert-Equal $false $savedDefaults.registerTotem 'The previous registration choice should be restored.'
+    Assert-Equal $true $savedDefaults.skipRustDesk 'The previous skip-RustDesk choice should be restored.'
     Assert-Equal 'Lobby' $savedDefaults.totemLocation 'Registration fields should be restored.'
     Assert-Equal 'nothing' $savedDefaults.finalAction 'The previous final action should be restored.'
     Assert-Equal 2 $savedDefaults.audioDisplay 'The audio source should be restored.'
@@ -310,6 +327,7 @@ try {
     $legacyDefaults = Get-KioskGuiDefaults
     Assert-Equal $null (Get-KioskGuiDisplaySettings $legacyDefaults $displays[0]) 'Legacy multi-display settings must not silently assign a video by unstable DISPLAY number.'
     Assert-Equal $false $legacyDefaults.registerTotem 'Legacy state should not accidentally enable registration.'
+    Assert-Equal $false (Get-KioskGuiValue $legacyDefaults 'skipRustDesk' $false) 'Legacy settings should retain the normal RustDesk setup.'
     Set-Content -Encoding UTF8 -Path (Join-Path $runtimeRoot 'gui-settings.json') -Value 'not json'
     Assert-Equal $null (Get-KioskGuiDisplaySettings (Get-KioskGuiDefaults) $displays[0]) 'Bad preferences must not reassign old videos by display number.'
 
@@ -463,6 +481,65 @@ Assert-Equal 4 $script:secretPrompts.Count 'Both entries should be requested aga
     $script:rustdeskService = $null
     function fake-rustdesk.exe { $global:LASTEXITCODE = 1 }
     Assert-Throws { Ensure-KioskRustDeskService 'fake-rustdesk.exe' } 'Setup must fail if RustDesk cannot install its service.'
+}
+
+& {
+    $script:registrationAttempts = 0
+    function Install-KioskVideo { param($Display) throw 'download failed' }
+    function Register-KioskTotem {
+        param([switch] $SkipRustDesk)
+        $script:registrationAttempts++
+    }
+    $plan = [pscustomobject]@{
+        Displays = @([pscustomobject]@{ Type = 'video'; Number = 1 })
+        Register = $true; SkipRustDesk = $false; TotemName = 'Lobby'; TotemDescription = ''; TotemLocation = ''
+    }
+    try { Install-KioskContent $plan; throw 'Expected a download failure.' }
+    catch { Assert-Match 'download failed' $_.Exception.Message 'Content errors must still fail setup.' }
+    Assert-Equal 1 $script:registrationAttempts 'Registration should be attempted after a failed video download.'
+
+    $plan.Register = $false
+    Assert-Throws { Install-KioskContent $plan } 'A failed download must still fail when registration is disabled.'
+    Assert-Equal 1 $script:registrationAttempts 'Registration must respect the user's choice.'
+
+    $plan.Register = $true
+    function Register-KioskTotem { param([switch] $SkipRustDesk) $script:registrationAttempts++; throw 'registration failed' }
+    try { Install-KioskContent $plan; throw 'Expected a download failure.' }
+    catch { Assert-Match 'download failed' $_.Exception.Message 'A registration error must not hide the download error.' }
+    Assert-Equal 2 $script:registrationAttempts 'Registration should be tried even when it also fails.'
+
+    function Install-KioskVideo { param($Display) $Display }
+    Install-KioskContent $plan
+    Assert-Equal 2 $script:registrationAttempts 'Successful content setup must leave registration to the normal post-startup step.'
+}
+
+& {
+    $script:rustdeskSetupCalls = 0
+    function Install-KioskRustDesk { param([string] $Password) $script:rustdeskSetupCalls++ }
+    Set-KioskRustDeskAccess $noPassword
+    Assert-Equal 0 $script:rustdeskSetupCalls 'Skip must avoid winget and all RustDesk setup.'
+    $noPassword.SkipRustDesk = $false
+    $noPassword.RustDeskPassword = 'secret'
+    Set-KioskRustDeskAccess $noPassword
+    Assert-Equal 1 $script:rustdeskSetupCalls 'Normal setup still configures RustDesk.'
+}
+
+& {
+    $script:SharedConfig = [pscustomobject]@{
+        registerTotemUrl = 'https://example.test/register-totem'
+        registerTotemToken = 'fake-token'
+    }
+    function Get-SavedRustDesk { throw 'Skipped registration must not read saved RustDesk credentials.' }
+    function Get-ItemProperty { param([string] $Path) [pscustomobject]@{ MachineGuid = 'test-guid' } }
+    function Invoke-WebRequest {
+        param([switch] $UseBasicParsing, [string] $Method, [string] $Uri, [hashtable] $Headers,
+              [string] $ContentType, [string] $Body)
+        $script:registrationPayload = $Body | ConvertFrom-Json
+    }
+    function Install-KioskStatusReporter { param($Endpoint, $Token, $Displays) }
+    Register-KioskTotem -TotemType video -Displays $noPassword.Displays -Name 'Lobby' -SkipRustDesk
+    Assert-Equal $null $script:registrationPayload.rustdeskId 'Skipped RustDesk IDs must not be sent to registration.'
+    Assert-Equal $null $script:registrationPayload.rustdeskPassword 'Skipped RustDesk passwords must not be sent to registration.'
 }
 
 Write-Host "Windows kiosk tests passed."

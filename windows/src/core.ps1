@@ -66,6 +66,7 @@ function Save-KioskState {
         audioDisplay = $Plan.AudioDisplay
         audioDevice = $Plan.AudioDevice
         audioDeviceName = $Plan.AudioDeviceName
+        skipRustDesk = $Plan.SkipRustDesk
         ports     = @(@($Plan.Displays) | Where-Object { $_.Port -gt 0 } | ForEach-Object { $_.Port })
         displays  = $displays
     }

@@ -65,7 +65,7 @@ The wizard configures:
 7. Optional totem registration and five-minute status reporting, both reporting every screen
 8. Launch now, reboot, or do nothing
 
-RustDesk and VLC are installed with `winget` when missing. Setup installs the RustDesk Windows service if needed, sets it to start automatically, and checks that it is running before configuring unattended access. Cleanup leaves this service unchanged. Webapps are served only on `http://127.0.0.1:8080`.
+RustDesk and VLC are installed with `winget` when missing. Setup installs the RustDesk Windows service if needed, sets it to start automatically, and checks that it is running before configuring unattended access. If `winget` cannot install RustDesk, check **Skip RustDesk (no remote access)** in the visual wizard to proceed without it: the password fields are disabled, the totem can still be registered without RustDesk credentials, and the choice is remembered. This does not skip VLC or the video download. Cleanup leaves any installed RustDesk service unchanged. Webapps are served only on `http://127.0.0.1:8080`.
 
 Nothing is applied until every answer validates, so a bad link on the second screen cannot leave the first one half-configured.
 
@@ -76,6 +76,8 @@ Registration is also available on its own, without configuring the kiosk again. 
 ```bat
 windows\kiosk.cmd register-totem
 ```
+
+If a video download or other kiosk content installation fails during setup, the wizard still attempts the selected totem registration, but reports setup as failed and does not write a new kiosk startup entry or claim the incomplete setup is working. Registration can still fail independently if the server is unreachable.
 
 Either way it reuses what `kiosk-state.json` already knows about this PC — every screen, its type, and which one carries the audio — so the record matches the running setup. On a PC that was never configured it falls back to the detected displays and asks for the totem type. The saved RustDesk ID and password are reused when they exist, and the five-minute status reporter is installed as usual. Nothing about the kiosk setup itself is touched.
 

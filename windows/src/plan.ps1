@@ -35,6 +35,7 @@ function New-KioskPlan {
         [object[]] $Displays = @(),
         [AllowEmptyString()][string] $WindowsPassword = "",
         [AllowEmptyString()][string] $RustDeskPassword = "",
+        [bool] $SkipRustDesk = $false,
         [bool] $Register = $false,
         [AllowEmptyString()][string] $TotemName = "",
         [AllowEmptyString()][string] $TotemDescription = "",
@@ -48,7 +49,8 @@ function New-KioskPlan {
     [pscustomobject]@{
         Displays         = @($Displays)
         WindowsPassword  = $WindowsPassword
-        RustDeskPassword = $RustDeskPassword
+        RustDeskPassword = if ($SkipRustDesk) { "" } else { $RustDeskPassword }
+        SkipRustDesk     = $SkipRustDesk
         Register         = $Register
         TotemName        = $TotemName
         TotemDescription = $TotemDescription
@@ -72,7 +74,7 @@ function Test-KioskPlan {
             return "Windows could not uniquely identify every physical monitor. Nothing was changed."
         }
     }
-    if ([string]::IsNullOrWhiteSpace($Plan.RustDeskPassword)) { return "Enter a RustDesk password." }
+    if (-not $Plan.SkipRustDesk -and [string]::IsNullOrWhiteSpace($Plan.RustDeskPassword)) { return "Enter a RustDesk password." }
     if ($Plan.FinalAction -notin $script:KioskFinalActions) { return "Choose what to do after setup." }
 
     foreach ($display in $displays) {

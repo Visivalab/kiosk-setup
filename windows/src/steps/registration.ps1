@@ -56,7 +56,8 @@ function Register-KioskTotemNow {
         [Parameter(Mandatory = $true)][string] $Name,
         [AllowEmptyString()][string] $Description = "",
         [AllowEmptyString()][string] $Location = "",
-        [AllowEmptyString()][string] $TotemType = ""
+        [AllowEmptyString()][string] $TotemType = "",
+        [Nullable[bool]] $SkipRustDesk = $null
     )
 
     $displays = Get-KioskRegistrationDisplays
@@ -69,8 +70,11 @@ function Register-KioskTotemNow {
         $displays = @(@(Get-KioskDisplays) | ForEach-Object { New-KioskDisplayPlan $_ -Type $TotemType })
         Write-KioskDone "no kiosk setup saved on this PC, so registering $($displays.Count) detected screen(s) as $TotemType."
     }
+    $skip = if ($null -ne $SkipRustDesk) { [bool] $SkipRustDesk } else {
+        [bool] (Get-KioskJsonValue (Get-KioskState) "skipRustDesk" $false)
+    }
     Register-KioskTotem -TotemType $displays[0].Type -Displays $displays `
-        -Name $Name -Description $Description -Location $Location
+        -Name $Name -Description $Description -Location $Location -SkipRustDesk:$skip
 }
 
 function Install-KioskStatusReporter {
@@ -120,7 +124,8 @@ function Register-KioskTotem {
         [object[]] $Displays = @(),
         [string] $Name,
         [string] $Description = "",
-        [string] $Location = ""
+        [string] $Location = "",
+        [switch] $SkipRustDesk
     )
     if (-not $PSBoundParameters.ContainsKey("Name")) {
         if (-not (Read-KioskConfirmation $script:SharedConfig.prompts.registerTotem $true)) {
@@ -133,7 +138,7 @@ function Register-KioskTotem {
     } elseif (-not $Name.Trim()) {
         throw "Totem name cannot be empty."
     }
-    $credentials = Get-SavedRustDesk
+    $credentials = if ($SkipRustDesk) { [pscustomobject]@{ id = $null; password = $null } } else { Get-SavedRustDesk }
     $machineId = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Cryptography").MachineGuid
     $endpoint = if ($env:PI_KIOSK_REGISTER_TOTEM_URL) { $env:PI_KIOSK_REGISTER_TOTEM_URL } else { $script:SharedConfig.registerTotemUrl }
     $token = if ($env:PI_KIOSK_REGISTER_TOTEM_TOKEN) { $env:PI_KIOSK_REGISTER_TOTEM_TOKEN } else { $script:SharedConfig.registerTotemToken }

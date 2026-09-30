@@ -51,6 +51,7 @@ function Get-KioskGuiDefaults {
         audioSourceMonitorId = if ($audioSource.Count) { [string] (Get-KioskGuiValue $audioSource[0] 'monitorId' '') } else { "" }
         audioDevice = [string] (Get-KioskGuiValue $state "audioDevice" "")
         registerTotem = $false
+        skipRustDesk = [bool] (Get-KioskGuiValue $state "skipRustDesk" $false)
         totemName = ""
         totemDescription = ""
         totemLocation = ""
@@ -87,6 +88,7 @@ function Save-KioskGuiSettings {
         audioSourceMonitorId = if ($audioSource.Count) { [string] $audioSource[0].MonitorId } else { "" }
         audioDevice = $Plan.AudioDevice
         registerTotem = $Plan.Register
+        skipRustDesk = $Plan.SkipRustDesk
         totemName = $Plan.TotemName
         totemDescription = $Plan.TotemDescription
         totemLocation = $Plan.TotemLocation
@@ -115,6 +117,7 @@ function ConvertFrom-KioskGuiConfig {
     New-KioskPlan -Displays $planned `
         -WindowsPassword (Unprotect-KioskGuiSecret ([string] $Config.windowsPassword)) `
         -RustDeskPassword (Unprotect-KioskGuiSecret ([string] $Config.rustDeskPassword)) `
+        -SkipRustDesk ([bool] (Get-KioskGuiValue $Config "skipRustDesk" $false)) `
         -Register ([bool] $Config.registerTotem) `
         -TotemName ([string] $Config.totemName) `
         -TotemDescription ([string] $Config.totemDescription) `
@@ -153,7 +156,8 @@ function Invoke-KioskGuiRegister {
         Register-KioskTotemNow -Name ([string] $config.totemName) `
             -Description ([string] $config.totemDescription) `
             -Location ([string] $config.totemLocation) `
-            -TotemType ([string] $config.totemType)
+            -TotemType ([string] $config.totemType) `
+            -SkipRustDesk ([bool] (Get-KioskGuiValue $config "skipRustDesk" $false))
         Show-KioskSummary
         return 0
     } catch {
@@ -442,12 +446,29 @@ function Show-KioskGui {
     $windowsPassword.UseSystemPasswordChar = $true
     $windowsPassword.AccessibleDescription = "Use the Windows account password, not the PIN. Leave empty only for a passwordless local account."
     Add-KioskGuiField $accountGroup.Table "Windows password (not PIN):" $windowsPassword
+    $skipRustDesk = [Windows.Forms.CheckBox]::new()
+    $skipRustDesk.Text = "Skip RustDesk (no remote access)"
+    $skipRustDesk.AutoSize = $true
+    $skipRustDesk.Margin = [Windows.Forms.Padding]::new(0, 8, 0, 8)
+    $skipRow = $accountGroup.Table.RowCount
+    $accountGroup.Table.RowCount++
+    [void] $accountGroup.Table.RowStyles.Add([Windows.Forms.RowStyle]::new([Windows.Forms.SizeType]::AutoSize))
+    $accountGroup.Table.Controls.Add($skipRustDesk, 0, $skipRow)
+    $accountGroup.Table.SetColumnSpan($skipRustDesk, 2)
     $rustDeskPassword = [Windows.Forms.TextBox]::new()
     $rustDeskPassword.UseSystemPasswordChar = $true
     Add-KioskGuiField $accountGroup.Table "RustDesk password:" $rustDeskPassword
     $rustDeskConfirmation = [Windows.Forms.TextBox]::new()
     $rustDeskConfirmation.UseSystemPasswordChar = $true
     Add-KioskGuiField $accountGroup.Table "Confirm RustDesk password:" $rustDeskConfirmation
+    $skipRustDesk.Add_CheckedChanged({
+        $rustDeskPassword.Enabled = -not $skipRustDesk.Checked
+        $rustDeskConfirmation.Enabled = -not $skipRustDesk.Checked
+        if ($skipRustDesk.Checked) {
+            $rustDeskPassword.Clear()
+            $rustDeskConfirmation.Clear()
+        }
+    })
     Add-KioskGuiRow $root $accountGroup.Group
 
     $registrationGroup = New-KioskGuiGroup "Registration"
@@ -580,6 +601,7 @@ function Show-KioskGui {
                 if ($audioDevices[$index].Id -eq $audioId) { $audioOutput.SelectedIndex = $index + 1; break }
             }
         }
+        $skipRustDesk.Checked = [bool] (Get-KioskGuiValue $defaults "skipRustDesk" $false)
         $registerTotem.Checked = [bool] (Get-KioskGuiValue $defaults "registerTotem" $true)
         foreach ($control in @($totemName, $totemDescription, $totemLocation)) {
             $control.Enabled = $registerTotem.Checked
@@ -659,12 +681,12 @@ function Show-KioskGui {
         $plan = New-KioskPlan -Displays $planned `
             -AudioDisplay $audioNumber -AudioDevice $audioId -AudioDeviceName $audioName `
             -WindowsPassword $windowsPassword.Text -RustDeskPassword $rustDeskPassword.Text `
-            -Register $registerTotem.Checked -TotemName $totemName.Text `
+            -SkipRustDesk $skipRustDesk.Checked -Register $registerTotem.Checked -TotemName $totemName.Text `
             -TotemDescription $totemDescription.Text -TotemLocation $totemLocation.Text `
             -FinalAction @("launch", "reboot", "nothing")[$finalAction.SelectedIndex]
 
         $validationError = Test-KioskPlan $plan
-        if (-not $validationError) {
+        if (-not $validationError -and -not $plan.SkipRustDesk) {
             $validationError = Test-KioskRustDeskConfirmation $rustDeskPassword.Text $rustDeskConfirmation.Text
         }
         if ($validationError) {
@@ -688,7 +710,8 @@ function Show-KioskGui {
         $configPath = Join-Path $script:GuiWork "setup.json"
         @{
             windowsPassword = Protect-KioskGuiSecret $windowsPassword.Text
-            rustDeskPassword = Protect-KioskGuiSecret $rustDeskPassword.Text
+            rustDeskPassword = Protect-KioskGuiSecret $plan.RustDeskPassword
+            skipRustDesk = $plan.SkipRustDesk
             registerTotem = $plan.Register
             totemName = $plan.TotemName
             totemDescription = $plan.TotemDescription
@@ -756,6 +779,7 @@ function Show-KioskGui {
             totemDescription = $totemDescription.Text.Trim()
             totemLocation = $totemLocation.Text.Trim()
             totemType = $fallbackType
+            skipRustDesk = $skipRustDesk.Checked
         } | ConvertTo-Json | Set-Content -Encoding UTF8 $registerPath
         $script:GuiOperation = "registration"
         $script:GuiStdout = Join-Path $script:GuiWork "setup.log"

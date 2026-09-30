@@ -12,12 +12,9 @@ function Invoke-KioskPlan {
     Set-KioskRotationPlan $Plan.Displays
     Set-KioskNoSleep
     Enable-KioskAutologon -Password $Plan.WindowsPassword
-    [void] (Install-KioskRustDesk $Plan.RustDeskPassword)
+    Set-KioskRustDeskAccess $Plan
 
-    foreach ($display in @($Plan.Displays)) {
-        if ($display.Type -eq "webapp") { [void] (Install-KioskWebApp $display) }
-        else { [void] (Install-KioskVideo $display) }
-    }
+    Install-KioskContent $Plan
 
     Resolve-KioskAudioPlan $Plan
     $launcher = Write-KioskOrchestrator -Displays $Plan.Displays -AudioDevice $Plan.AudioDevice
@@ -28,7 +25,8 @@ function Invoke-KioskPlan {
 
     if ($Plan.Register) {
         Register-KioskTotem -TotemType (Get-KioskPlanTotemType $Plan) -Displays $Plan.Displays `
-            -Name $Plan.TotemName -Description $Plan.TotemDescription -Location $Plan.TotemLocation
+            -Name $Plan.TotemName -Description $Plan.TotemDescription -Location $Plan.TotemLocation `
+            -SkipRustDesk:$($Plan.SkipRustDesk)
     } else {
         Write-KioskDone "skipped totem registration."
     }
@@ -37,6 +35,41 @@ function Invoke-KioskPlan {
         Invoke-KioskFinalAction -Plan $Plan -Launcher $launcher
     } else {
         Invoke-KioskFinalAction -Plan $Plan -Launcher $launcher -Action $Plan.FinalAction
+    }
+}
+
+function Set-KioskRustDeskAccess {
+    param([Parameter(Mandatory = $true)][object] $Plan)
+
+    if ($Plan.SkipRustDesk) {
+        Write-KioskDone "skipped RustDesk setup; remote access will not be available."
+    } else {
+        [void] (Install-KioskRustDesk $Plan.RustDeskPassword)
+    }
+}
+
+function Install-KioskContent {
+    param([Parameter(Mandatory = $true)][object] $Plan)
+
+    try {
+        foreach ($display in @($Plan.Displays)) {
+            if ($display.Type -eq "webapp") { [void] (Install-KioskWebApp $display) }
+            else { [void] (Install-KioskVideo $display) }
+        }
+    } catch {
+        $contentError = $_
+        # No startup entry or saved working state is written for an incomplete kiosk.
+        if ($Plan.Register) {
+            Write-Host "WARN: Kiosk content failed. Attempting to register the totem anyway."
+            try {
+                Register-KioskTotem -TotemType (Get-KioskPlanTotemType $Plan) -Displays $Plan.Displays `
+                    -Name $Plan.TotemName -Description $Plan.TotemDescription -Location $Plan.TotemLocation `
+                    -SkipRustDesk:$($Plan.SkipRustDesk)
+            } catch {
+                Write-Host "WARN: Totem registration or status setup failed; retry it when the connection is available."
+            }
+        }
+        throw $contentError
     }
 }
 
