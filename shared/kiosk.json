@@ -1,7 +1,7 @@
 {
   "s3ReleaseBaseUrl": "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/",
   "webappPathExample": "screen_1_de/screen_1_de-dist.zip",
-  "registerTotemUrl": "http://72.62.59.66:8083/register-totem",
+  "registerTotemUrl": "https://visivalabserver.tail961be9.ts.net/register-totem",
   "registerTotemToken": "76cf38119e7a1822abd6935f76583ef1e97ee7fb23a72d39",
   "statusIntervalMinutes": 5,
   "prompts": {
