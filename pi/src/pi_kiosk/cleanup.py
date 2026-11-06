@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from typing import Callable
 
+from pi_kiosk.desktop_session import SLEEP_TARGETS, disable_autologin
 from pi_kiosk.files import read_or_empty
 from pi_kiosk.host import WaylandOutput
+from pi_kiosk.machine import RASPBERRY_PI
 from pi_kiosk.steps.kiosk_common import (
     CURSOR_RC_BEGIN,
     CURSOR_RC_END,
@@ -81,8 +83,16 @@ def run_cleanup(host, progress: Callable[[str], None] | None = None) -> list[str
     host.run(["systemctl", "daemon-reload"], check=False)
     done("removed the totem status timer.")
 
-    host.run(["raspi-config", "nonint", "do_boot_behaviour", "B3"], check=False)
-    done("disabled desktop autologin; the desktop asks for the password again.")
+    if host.platform() == RASPBERRY_PI:
+        host.run(["raspi-config", "nonint", "do_boot_behaviour", "B3"], check=False)
+        done("disabled desktop autologin; the desktop asks for the password again.")
+    else:
+        disable_autologin(host, user, host.display_manager() or "gdm3")
+        host.run(["systemctl", "unmask", *SLEEP_TARGETS], check=False)
+        done(
+            "disabled autologin and restored the default desktop session; "
+            "the PC may suspend again."
+        )
 
     for path in (
         f"{home}/.config/pi-kiosk",
@@ -101,8 +111,8 @@ def run_cleanup(host, progress: Callable[[str], None] | None = None) -> list[str
     done(f"restored normal rotation on {len(outputs)} display(s).")
 
     done(
-        "Raspberry Pi kiosk cleanup completed. RustDesk, mpv, the blanking setting, "
-        "and the remote registration were left unchanged."
+        "Kiosk cleanup completed. RustDesk, mpv, labwc, the Raspberry Pi blanking "
+        "setting, and the remote registration were left unchanged."
     )
     return reports
 

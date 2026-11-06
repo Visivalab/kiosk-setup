@@ -20,8 +20,13 @@ import zipfile
 
 from pi_kiosk.audio import parse_pactl_sinks
 from pi_kiosk.detect import looks_like_raspberry_pi
-from pi_kiosk.display import parse_wlr_randr
-from pi_kiosk.errors import UserFacingError
+from pi_kiosk.display import parse_drm_connectors, parse_wlr_randr
+from pi_kiosk.machine import (
+    detect_platform,
+    display_manager_from_unit,
+    parse_os_release,
+)
+from pi_kiosk.errors import DesktopSessionUnavailable, UserFacingError
 from pi_kiosk.host import (
     AudioOutput,
     RustDeskInstall,
@@ -443,6 +448,29 @@ class LinuxHost:
             has_rpi_issue=Path("/etc/rpi-issue").is_file(),
         )
 
+    def platform(self) -> str | None:
+        return detect_platform(
+            model=_read_device_tree_model(),
+            has_rpi_issue=Path("/etc/rpi-issue").is_file(),
+            os_release=_read_text("/etc/os-release"),
+            proc_version=_read_text("/proc/version"),
+            display_manager=self.display_manager(),
+            in_container=_in_container(os.path.exists),
+        )
+
+    def display_manager(self) -> str | None:
+        unit = Path("/etc/systemd/system/display-manager.service")
+        try:
+            target = os.readlink(unit)
+        except OSError:
+            return None
+        return display_manager_from_unit(target)
+
+    def browser_package(self) -> str:
+        # Ubuntu ships Chromium as a snap behind the chromium-browser package.
+        release = parse_os_release(_read_text("/etc/os-release"))
+        return "chromium-browser" if release.get("ID") == "ubuntu" else "chromium"
+
     def is_root(self) -> bool:
         return os.geteuid() == 0
 
@@ -471,30 +499,39 @@ class LinuxHost:
         target.write_text(content, encoding="utf-8")
         if target.name == "autostart":
             target.chmod(0o755)
-        self._own(target)
+        # System files (/etc, /var/lib) must stay root-owned: a user-writable
+        # display-manager config would let the kiosk user run code as root.
+        if Path(self.home()) in target.parents:
+            self._own(target)
 
     def detect_wayland_output(self) -> str | None:
-        result = self.run_in_desktop_session(["wlr-randr"], check=False)
-        if result.returncode != 0:
-            return None
-        for line in result.stdout.splitlines():
-            if line and not line[0].isspace():
-                return line.split()[0]
-        return None
+        outputs = self.detect_wayland_outputs()
+        return outputs[0].name if outputs else None
 
     def detect_wayland_outputs(self) -> list[WaylandOutput]:
-        result = self.run_in_desktop_session(["wlr-randr"], check=False)
-        if result.returncode != 0:
-            return []
-        return parse_wlr_randr(result.stdout)
+        try:
+            result = self.run_in_desktop_session(["wlr-randr"], check=False)
+        except FileNotFoundError:
+            result = None
+        outputs = parse_wlr_randr(result.stdout) if result is not None and result.returncode == 0 else []
+        # GNOME (first run on a desktop) and missing wlr-randr: ask the kernel instead.
+        return outputs or parse_drm_connectors(_drm_connectors())
 
     def audio_outputs(self) -> list[AudioOutput]:
+        # pactl only needs the user's runtime dir, not Wayland, so this also
+        # works on the first run from an Xorg session.
+        argv = ["env", "LC_ALL=C", "pactl", "list", "sinks"]
+        env = self._desktop_session_env()
         try:
-            result = self.run_in_desktop_session(
-                ["env", "LC_ALL=C", "pactl", "list", "sinks"],
-                check=False,
-            )
-        except FileNotFoundError:
+            if env is not None:
+                result = self.run_in_desktop_session(argv, check=False)
+            else:
+                info = pwd.getpwnam(self.user())
+                runtime = {"XDG_RUNTIME_DIR": f"/run/user/{info.pw_uid}", "HOME": info.pw_dir}
+                prefix = ["sudo", "-H", "-u", self.user(), "env"] if self.is_root() else ["env"]
+                command = prefix + [f"{key}={value}" for key, value in runtime.items()] + argv[1:]
+                result = subprocess.run(command, check=False, text=True, capture_output=True)
+        except (FileNotFoundError, KeyError):
             return []
         if result.returncode != 0:
             return []
@@ -603,7 +640,7 @@ class LinuxHost:
                 ]
             ),
         ]
-        self.run_in_desktop_session(command, check=True)
+        self._run_launcher(command)
 
     def launch_webapp_server_now(self, launcher: str) -> None:
         command = [
@@ -611,7 +648,17 @@ class LinuxHost:
             "-lc",
             f"nohup bash {shlex.quote(launcher)} server-only >/dev/null 2>&1 </dev/null &",
         ]
-        self.run_in_desktop_session(command, check=True)
+        self._run_launcher(command)
+
+    def _run_launcher(self, command: list[str]) -> None:
+        if self._desktop_session_env() is None:
+            raise DesktopSessionUnavailable("No desktop Wayland session is running right now.")
+        try:
+            self.run_in_desktop_session(command, check=True)
+        except subprocess.CalledProcessError as exc:
+            raise DesktopSessionUnavailable(
+                f"The desktop session did not start the kiosk (exit {exc.returncode})."
+            ) from exc
 
     def launch_video_now(self, launcher: str) -> None:
         self.launch_kiosk_now(launcher)
@@ -627,9 +674,21 @@ class LinuxHost:
                 text=True,
                 capture_output=True,
             )
+            if result.returncode == 0:
+                return _libinput_reports_touch(result.stdout)
+        except FileNotFoundError:
+            pass
+        # libinput-tools is not installed by default on Ubuntu; udev always knows.
+        try:
+            result = subprocess.run(
+                ["udevadm", "info", "--export-db"],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
         except FileNotFoundError:
             return False
-        return _libinput_reports_touch(result.stdout)
+        return "E: ID_INPUT_TOUCHSCREEN=1" in result.stdout
 
     def install_rustdesk(
         self,
@@ -1031,6 +1090,34 @@ def _read_device_tree_model() -> str | None:
             continue
         return raw.split(b"\0", 1)[0].decode("utf-8", errors="replace")
     return None
+
+
+def _in_container(exists: Callable[[str], bool]) -> bool:
+    # systemd writes /run/systemd/container in LXC, nspawn, Docker and Podman.
+    return any(exists(path) for path in ("/run/systemd/container", "/.dockerenv", "/run/.containerenv"))
+
+
+def _read_text(path: str) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _drm_connectors() -> list[dict]:
+    connectors = []
+    for entry in sorted(Path("/sys/class/drm").glob("card*-*")):
+        def read(name: str, binary: bool = False):
+            try:
+                path = entry / name
+                return path.read_bytes() if binary else path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                return b"" if binary else ""
+
+        connectors.append(
+            {"dir": entry.name, "status": read("status"), "modes": read("modes"), "edid": read("edid", True)}
+        )
+    return connectors
 
 
 def _safe_zip_member_path(name: str) -> Path | None:

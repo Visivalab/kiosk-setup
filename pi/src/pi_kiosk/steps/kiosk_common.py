@@ -17,6 +17,10 @@ CURSOR_RC_BEGIN = "<!-- pi-kiosk-setup:cursor-hide-begin -->"
 CURSOR_RC_END = "<!-- pi-kiosk-setup:cursor-hide-end -->"
 CURSOR_KEYBIND = "A-W-h"
 NEXT_ACTION_PROMPT = shared_config()["prompts"]["nextAction"]
+NO_SESSION_NOTE = (
+    "There is no desktop session to start it in right now, so it starts on the "
+    "next graphical login (reboot to start it now)."
+)
 SIMULATE_AUTORUN = "simulate"
 REBOOT = "reboot"
 CLOSE = "close"

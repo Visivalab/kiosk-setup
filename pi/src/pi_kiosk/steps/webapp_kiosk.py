@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pi_kiosk.choice import Choice
-from pi_kiosk.errors import UserFacingError
+from pi_kiosk.errors import DesktopSessionUnavailable, UserFacingError
 from pi_kiosk.host import WebAppHost, WebAppSource
+from pi_kiosk.machine import LINUX_DESKTOP
 from pi_kiosk.shared_config import config as shared_config
 from pi_kiosk.steps.kiosk_common import (
     CLOSE,
@@ -16,6 +17,7 @@ from pi_kiosk.steps.kiosk_common import (
     KIOSK_AUTOSTART_BEGIN,
     NEXT_ACTION_CHOICES,
     NEXT_ACTION_PROMPT,
+    NO_SESSION_NOTE,
     REBOOT,
     SIMULATE_AUTORUN,
     install_cursor_keybind,
@@ -228,6 +230,9 @@ class WebAppKioskStep:
         progress = context.ui.progress if context is not None else None
         deployment = host.deploy_webapp(request.source, progress=progress)
         browser = host.chromium_command()
+        if browser is None and host.platform() == LINUX_DESKTOP:
+            host.ensure_packages_installed((host.browser_package(),))
+            browser = host.chromium_command()
         if browser is None:
             raise UserFacingError(
                 "Chromium was not found on this Pi. Install Chromium and run the wizard again."
@@ -297,7 +302,10 @@ class WebAppKioskStep:
             f"{heartbeat_log_tail_command(home)}."
         )
         if action == SIMULATE_AUTORUN:
-            host.launch_kiosk_now(launcher_path(home))
+            try:
+                host.launch_kiosk_now(launcher_path(home))
+            except DesktopSessionUnavailable as exc:
+                return f"Done: kiosk not launched now. {exc} {NO_SESSION_NOTE}"
             return (
                 "Done: simulated autorun for testing. Cursor may not automatically hide "
                 f"until the next graphical login. The app is on {action_url()}. {log_report}"
@@ -306,7 +314,10 @@ class WebAppKioskStep:
             host.reboot()
             return f"Done: rebooting now for the final production startup. {log_report}"
 
-        host.launch_webapp_server_now(launcher_path(home))
+        try:
+            host.launch_webapp_server_now(launcher_path(home))
+        except DesktopSessionUnavailable as exc:
+            return f"Done: the app server was not started now. {exc} {NO_SESSION_NOTE}"
         return (
             f"Done: the app is live on {action_url()} without opening Chromium. {log_report}"
         )

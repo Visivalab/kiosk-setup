@@ -20,6 +20,7 @@ from typing import TextIO
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.gui_model import build_hello
 from pi_kiosk.gui_session import GuiSession
+from pi_kiosk.machine import UNSUPPORTED_MESSAGE
 
 FRONTEND = Path(__file__).with_name("gui.py")
 X11_SOCKET = Path("/tmp/.X11-unix/X0")
@@ -47,8 +48,8 @@ def frontend_environment(
 
 def run_gui(host, stderr: TextIO | None = None) -> int:
     stderr = stderr if stderr is not None else sys.stderr
-    if not host.is_raspberry_pi():
-        print("This tool only configures Raspberry Pi OS. Nothing was changed on this machine.", file=stderr)
+    if host.platform() is None:
+        print(UNSUPPORTED_MESSAGE, file=stderr)
         return 2
     if not host.is_root():
         print("Run this tool with sudo. Nothing was changed.", file=stderr)

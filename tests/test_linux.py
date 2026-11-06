@@ -47,6 +47,52 @@ class LinuxHostTests(unittest.TestCase):
                 with self.assertRaises(NeedSudoUser):
                     LinuxHost().user()
 
+    def test_write_file_keeps_system_files_owned_by_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home" / "pi"
+            home.mkdir(parents=True)
+            system_file = Path(tmp) / "etc" / "lightdm" / "lightdm.conf.d" / "60-pi-kiosk.conf"
+            user_file = home / ".config" / "labwc" / "autostart"
+            owned: list[Path] = []
+            host = LinuxHost()
+
+            with mock.patch.object(host, "home", return_value=str(home)):
+                with mock.patch.object(host, "_own", side_effect=owned.append):
+                    host.write_file(str(system_file), "[Seat:*]\n")
+                    host.write_file(str(user_file), "kanshi &\n")
+
+            self.assertNotIn(system_file, owned)
+            self.assertFalse(any(path == system_file.parent or system_file.parent in path.parents for path in owned))
+            self.assertIn(user_file, owned)
+
+    def test_audio_outputs_are_listed_without_a_wayland_session(self):
+        host = LinuxHost()
+        calls = []
+
+        def fake_run(argv, **kwargs):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, stdout="Sink #1\n\tName: hdmi\n\tDescription: HDMI\n", stderr="")
+
+        user = mock.Mock(pw_uid=1000, pw_dir="/home/pi")
+        with mock.patch.object(host, "_desktop_session_env", return_value=None), \
+                mock.patch.object(host, "is_root", return_value=True), \
+                mock.patch.object(host, "user", return_value="pi"), \
+                mock.patch("pi_kiosk.linux.pwd.getpwnam", return_value=user), \
+                mock.patch("pi_kiosk.linux.subprocess.run", side_effect=fake_run):
+            outputs = host.audio_outputs()
+
+        self.assertEqual([output.id for output in outputs], ["pulse/hdmi"])
+        self.assertIn("XDG_RUNTIME_DIR=/run/user/1000", calls[0])
+        self.assertEqual(calls[0][:4], ["sudo", "-H", "-u", "pi"])
+
+    def test_launch_without_a_desktop_session_raises_a_clear_error(self):
+        from pi_kiosk.linux import DesktopSessionUnavailable
+
+        host = LinuxHost()
+        with mock.patch.object(host, "_desktop_session_env", return_value=None):
+            with self.assertRaises(DesktopSessionUnavailable):
+                host.launch_webapp_server_now("/home/pi/.config/pi-kiosk/webapp-kiosk.sh")
+
     def test_mkdir_owns_each_directory_under_the_desktop_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "home" / "pi"

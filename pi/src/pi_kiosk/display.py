@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pi_kiosk.host import WaylandOutput
 
 _MODE = re.compile(r"^(\d+)x(\d+) px")
+_MODE_SIZE = re.compile(r"^(\d+)x(\d+)")
 
 _CHOICE_IDS_BY_TRANSFORM = {
     "normal": "none",
@@ -81,3 +82,38 @@ def parse_wlr_randr(stdout: str) -> list[WaylandOutput]:
             current["height"] = int(match.group(2))
     finish()
     return outputs
+
+
+def _edid_monitor_name(edid: bytes) -> str:
+    for offset in (54, 72, 90, 108):
+        block = edid[offset : offset + 18]
+        if len(block) == 18 and block[0] == 0 and block[1] == 0 and block[3] == 0xFC:
+            return block[5:].split(b"\n", 1)[0].decode("ascii", errors="ignore").strip()
+    return ""
+
+
+def parse_drm_connectors(connectors: list[dict]) -> list[WaylandOutput]:
+    """Connected screens from /sys/class/drm, named like wlroots names them.
+
+    Used when wlr-randr cannot answer, e.g. on the first run from a GNOME
+    session before labwc is installed.
+    """
+    outputs = []
+    for connector in connectors:
+        if connector.get("status", "").strip() != "connected":
+            continue
+        name = connector["dir"].split("-", 1)[1] if "-" in connector["dir"] else connector["dir"]
+        width = height = 0
+        first_mode = (connector.get("modes") or "").strip().splitlines()
+        match = _MODE_SIZE.match(first_mode[0]) if first_mode else None
+        if match:
+            width, height = int(match.group(1)), int(match.group(2))
+        outputs.append(
+            WaylandOutput(
+                name=name,
+                description=_edid_monitor_name(connector.get("edid") or b""),
+                width=width,
+                height=height,
+            )
+        )
+    return sorted(outputs, key=lambda output: output.name)

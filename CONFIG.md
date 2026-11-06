@@ -16,9 +16,27 @@ not under `/root`.
 
 ### Does the installer run on any Linux machine?
 
-No. It refuses to make changes unless the machine looks like a Raspberry Pi and
-the process is running as root. It should be launched with `sudo` from the
-desktop user's account.
+No. It runs on a Raspberry Pi with Raspberry Pi OS, or on an Ubuntu/Debian
+desktop PC whose display manager is GDM or LightDM. Servers without a display
+manager, WSL and containers are refused, and it always needs root. Launch it
+with `sudo` from the desktop user's account.
+
+### What is different on an Ubuntu/Debian desktop?
+
+Raspberry Pi OS already runs labwc. On a desktop PC the autologin step first
+installs `labwc`, `wlr-randr`, `xwayland`, `libinput-tools` and
+`xdg-desktop-portal-wlr` (and `wlopm` if the distribution has it), then logs the
+user straight into labwc:
+
+| Display manager | Files changed |
+| --- | --- |
+| GDM | `AutomaticLoginEnable=True` and `AutomaticLogin=<user>` in `/etc/gdm3/custom.conf` (`daemon.conf` on Debian); `Session=labwc` in `/var/lib/AccountsService/users/<user>` |
+| LightDM | `/etc/lightdm/lightdm.conf.d/60-pi-kiosk.conf` |
+
+Instead of `raspi-config nonint do_blanking 1`, it masks `sleep.target`,
+`suspend.target`, `hibernate.target` and `hybrid-sleep.target`. All the labwc
+files described below are the same, and apply after rebooting into labwc.
+`cleanup` reverses the autologin and session choice and unmasks the targets.
 
 ### Is the installer itself permanently installed?
 

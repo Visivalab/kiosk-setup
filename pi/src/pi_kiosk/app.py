@@ -1,4 +1,5 @@
 from pi_kiosk.host import Host
+from pi_kiosk.machine import UNSUPPORTED_MESSAGE
 from pi_kiosk.steps.autologin import AutologinStep
 from pi_kiosk.steps.final_action import FinalActionStep
 from pi_kiosk.steps.nosleep import NoSleepStep
@@ -14,7 +15,7 @@ from pi_kiosk.wizard_context import WizardContext
 
 
 class NotARaspberryPi(RuntimeError):
-    """The wizard must not mutate a non-Pi machine."""
+    """The wizard must not mutate an unsupported machine (not a Pi nor a Linux desktop)."""
 
 
 class NeedRoot(RuntimeError):
@@ -82,11 +83,8 @@ class Wizard:
         return self._apply(self.steps, context)
 
     def _check_guards(self) -> None:
-        if not self.host.is_raspberry_pi():
-            raise NotARaspberryPi(
-                "This tool only configures Raspberry Pi OS. "
-                "Nothing was changed on this machine."
-            )
+        if self.host.platform() is None:
+            raise NotARaspberryPi(UNSUPPORTED_MESSAGE)
         if not self.host.is_root():
             raise NeedRoot("Run this tool with sudo. Nothing was changed.")
         self.host.user()

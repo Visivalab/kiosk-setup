@@ -41,6 +41,8 @@ class FakeHost:
         wayland_outputs: list[WaylandOutput] | None = None,
         audio_outputs: list[AudioOutput] | None = None,
         raspberry_pi: bool = True,
+        platform: str | None = None,
+        display_manager: str | None = None,
         root: bool = True,
         desktop_session_returncode: int = 0,
         deployed_webapp: WebAppDeployment | None = None,
@@ -69,6 +71,9 @@ class FakeHost:
         self.audio_output_list = list(audio_outputs or [])
         self.removed_paths: list[str] = []
         self.raspberry_pi = raspberry_pi
+        self.platform_name = platform or ("raspberry-pi" if raspberry_pi else None)
+        self.display_manager_name = display_manager
+        self.browser = "chromium"
         self.root = root
         self.desktop_session_returncode = desktop_session_returncode
         self.deployed_webapp = deployed_webapp or WebAppDeployment(
@@ -121,6 +126,15 @@ class FakeHost:
 
     def is_raspberry_pi(self) -> bool:
         return self.raspberry_pi
+
+    def platform(self) -> str | None:
+        return self.platform_name
+
+    def display_manager(self) -> str | None:
+        return self.display_manager_name
+
+    def browser_package(self) -> str:
+        return self.browser
 
     def is_root(self) -> bool:
         return self.root
@@ -233,6 +247,8 @@ class FakeHost:
             self.wtype = "/usr/bin/wtype"
         if "swayidle" in packages and self.swayidle is None:
             self.swayidle = "/usr/bin/swayidle"
+        if self.browser in packages and self.chromium is None:
+            self.chromium = "/usr/bin/chromium"
 
     def launch_kiosk_now(self, launcher: str) -> None:
         self.launched_kiosk_paths.append(launcher)

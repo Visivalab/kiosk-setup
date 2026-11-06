@@ -39,6 +39,8 @@ pi/src/pi_kiosk/terminal_ui.py numbered selector + Done: lines
 pi/src/pi_kiosk/files.py       idempotent tagged-block edits
 pi/src/pi_kiosk/kiosk_state.py /etc/pi-kiosk/kiosk-state.json (no passwords)
 pi/src/pi_kiosk/cleanup.py     undo the kiosk configuration
+pi/src/pi_kiosk/machine.py     platform detection (raspberry-pi / linux-desktop)
+pi/src/pi_kiosk/desktop_session.py Ubuntu/Debian: labwc install + GDM/LightDM autologin
 pi/src/pi_kiosk/gui.py         Tk window; runs as the desktop user, stdlib only,
                                no pi_kiosk imports (the launcher copies it alone)
 pi/src/pi_kiosk/gui_launcher.py root side: opens the window, pipes JSON requests
@@ -62,7 +64,11 @@ tests/                         unittest, FakeHost / FakeUI
 
 ## Safety
 
-- Refuse non-Pi machines (`looks_like_raspberry_pi`).
+- Refuse unsupported machines (`host.platform()` is None, see `machine.py`).
+  Supported: Raspberry Pi OS, and Ubuntu/Debian desktops with GDM or LightDM.
+  Servers (no display manager), WSL and containers must stay refused.
+- `raspi-config` is Pi-only. On `linux-desktop`, autologin/no-sleep go through
+  `desktop_session.py`.
 - Refuse non-root.
 - `LinuxHost` must write labwc files to the desktop user home (`SUDO_USER`), not `/root`.
 - A live run on this VPS must exit 2 and change nothing.

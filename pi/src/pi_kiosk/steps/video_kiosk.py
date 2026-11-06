@@ -8,11 +8,12 @@ from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from pi_kiosk.choice import Choice
-from pi_kiosk.errors import UserFacingError
+from pi_kiosk.errors import DesktopSessionUnavailable, UserFacingError
 from pi_kiosk.host import VideoHost, VideoSource
 from pi_kiosk.shared_config import config as shared_config
 from pi_kiosk.steps.kiosk_common import (
     CLOSE,
+    NO_SESSION_NOTE,
     REBOOT,
     SIMULATE_AUTORUN,
     install_kiosk_autostart,
@@ -308,7 +309,10 @@ class VideoKioskStep:
 
     def perform_next_action(self, host: VideoHost, action: str) -> str:
         if action == SIMULATE_AUTORUN:
-            host.launch_video_now(launcher_path(host.home()))
+            try:
+                host.launch_video_now(launcher_path(host.home()))
+            except DesktopSessionUnavailable as exc:
+                return f"Done: video not launched now. {exc} {NO_SESSION_NOTE}"
             return "Done: launching video now for testing."
         if action == REBOOT:
             host.reboot()

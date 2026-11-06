@@ -82,6 +82,35 @@ saved for future graphical logins.
 This is not an image builder. Flash stock Raspberry Pi OS Desktop 64-bit
 with Imager, boot normally, run the command.
 
+### Ubuntu / Debian desktop PCs
+
+The same Pi wizard (terminal or visual) also configures a normal Ubuntu or
+Debian desktop PC that logs in with GDM (Ubuntu's default) or LightDM. Run the
+same commands from a terminal on that PC's desktop.
+
+On those PCs it additionally:
+
+- installs `labwc`, `wlr-randr`, `xwayland`, `libinput-tools` and
+  `xdg-desktop-portal-wlr` (plus `wlopm` when available) with apt;
+- makes labwc the autologin session: `AutomaticLogin` in
+  `/etc/gdm3/custom.conf` plus `Session=labwc` in
+  `/var/lib/AccountsService/users/<user>`, or a LightDM drop-in at
+  `/etc/lightdm/lightdm.conf.d/60-pi-kiosk.conf`;
+- masks the systemd sleep, suspend and hibernate targets instead of using
+  `raspi-config`;
+- installs Chromium when a webapp needs it and it is missing (a snap on Ubuntu).
+
+Everything else (rotation, touch, kiosk autostart, cursor hide) is the same
+labwc setup as on the Pi, so it takes effect after the reboot into the labwc
+session. Screens are detected from the kernel when the current session is
+GNOME. Servers without a display manager, WSL and containers are refused.
+`cleanup` turns autologin off, restores the default GNOME/LightDM session and
+unmasks sleep; labwc stays installed.
+
+Known limits: GDM must allow Wayland (remove `WaylandEnable=false`, often set
+for NVIDIA cards; the wizard warns about it). RustDesk on a wlroots Wayland
+session relies on `xdg-desktop-portal-wlr` for screen sharing.
+
 ## What the Pi wizard does
 
 1. Screen rotation per screen (no rotation, clockwise 90°, counterclockwise 90°).
@@ -156,7 +185,8 @@ URL is inferred from `PI_KIOSK_REGISTER_TOTEM_URL` by replacing the final
 
 ## What it will not do
 
-- It refuses to run on a non-Raspberry Pi. Safe to invoke by mistake.
+- It refuses to run on anything but a Raspberry Pi or an Ubuntu/Debian desktop
+  with GDM or LightDM (servers, WSL and containers are refused). Safe to invoke by mistake.
 - It refuses to run without sudo.
 - It does not build frontend code on the Pi with npm/node.
 - It does not authenticate downloads from private object storage.

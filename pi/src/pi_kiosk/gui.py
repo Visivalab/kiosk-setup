@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Visual wizard window for the Raspberry Pi, modelled on windows/kiosk-gui.ps1.
+"""Visual wizard window for the Raspberry Pi (or a Linux desktop), modelled on windows/kiosk-gui.ps1.
 
 Runs as the desktop user and changes nothing itself: every button sends one
 JSON request on stdout to the root process (gui_launcher.py), which answers on
@@ -118,6 +118,7 @@ class DemoChannel:
         names = ["HDMI-A-1", "HDMI-A-2", "HDMI-A-3"][: self.count]
         return {
             "type": "hello",
+            "platform": "raspberry-pi",
             "user": "pi",
             "home": str(Path.home()),
             "displays": [
@@ -238,7 +239,8 @@ def run_window(channel) -> int:
 
     title_font = font.nametofont("TkDefaultFont").copy()
     title_font.configure(size=16, weight="bold")
-    title = ttk.Label(page, text="Configure this Raspberry Pi kiosk", font=title_font)
+    machine = "Raspberry Pi" if hello.get("platform") == "raspberry-pi" else "Linux"
+    title = ttk.Label(page, text=f"Configure this {machine} kiosk", font=title_font)
     add(title, pady=(0, 6))
     intro = (
         f"{len(displays)} displays detected. Each one plays its own looping video and starts on its "

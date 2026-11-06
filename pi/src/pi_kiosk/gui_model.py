@@ -53,6 +53,7 @@ def build_hello(host) -> dict[str, Any]:
         )
     return {
         "type": "hello",
+        "platform": host.platform(),
         "user": host.user(),
         "home": host.home(),
         "displays": displays,
