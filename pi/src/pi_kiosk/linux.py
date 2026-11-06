@@ -18,14 +18,18 @@ from urllib import error, request
 from urllib.parse import unquote, urlparse
 import zipfile
 
+from pi_kiosk.audio import parse_pactl_sinks
 from pi_kiosk.detect import looks_like_raspberry_pi
+from pi_kiosk.display import parse_wlr_randr
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import (
+    AudioOutput,
     RustDeskInstall,
     TotemConnectionDetails,
     TotemStatusReporterConfig,
     VideoDeployment,
     VideoSource,
+    WaylandOutput,
     WebAppDeployment,
     WebAppSource,
 )
@@ -131,26 +135,32 @@ class VideoDeployer:
         self,
         source: VideoSource,
         progress: Callable[[str], None] | None = None,
+        slot: str | None = None,
     ) -> VideoDeployment:
         video_root = Path(self._host.home()) / ".local" / "share" / "pi-kiosk" / "video"
+        if slot:
+            video_root = video_root / slot
         current_dir = video_root / "current"
         video_root.mkdir(parents=True, exist_ok=True)
         self._host._own_within_home(video_root)
 
         with tempfile.TemporaryDirectory():
-            self._host._report_progress(progress, "Preparing Dropbox download")
-            file_name = _video_file_name(source.download_url)
             stage_dir = video_root / "next"
             if stage_dir.exists():
                 shutil.rmtree(stage_dir)
             stage_dir.mkdir(parents=True, exist_ok=True)
 
-            video_path = self._host._download_video_file(
-                source.download_url,
-                stage_dir,
-                default_file_name=file_name,
-                progress=progress,
-            )
+            if source.local_path:
+                video_path = self._copy_local_video(Path(source.local_path), stage_dir, progress)
+            else:
+                self._host._report_progress(progress, "Preparing Dropbox download")
+                file_name = _video_file_name(source.download_url)
+                video_path = self._host._download_video_file(
+                    source.download_url,
+                    stage_dir,
+                    default_file_name=file_name,
+                    progress=progress,
+                )
             if video_path.stat().st_size == 0:
                 raise UserFacingError("Downloaded video file was empty.")
 
@@ -165,6 +175,22 @@ class VideoDeployer:
             video_path=str(deployed_path),
             file_name=video_path.name,
         )
+
+    def _copy_local_video(
+        self,
+        source: Path,
+        stage_dir: Path,
+        progress: Callable[[str], None] | None,
+    ) -> Path:
+        if not source.is_file() or source.stat().st_size == 0:
+            raise UserFacingError(f"Local video file is missing or empty: {source}")
+        self._host._report_progress(progress, f"Copying local video {source.name}")
+        target = stage_dir / source.name
+        try:
+            shutil.copyfile(source, target)
+        except OSError as exc:
+            raise UserFacingError(f"Could not copy the local video {source}: {exc}.") from exc
+        return target
 
 
 class RustDeskService:
@@ -307,6 +333,7 @@ class TotemRegistrationClient:
         description: str,
         location: str,
         connection: TotemConnectionDetails,
+        screens: tuple[dict, ...] = (),
     ) -> None:
         payload = {
             "totem_id": machine_name,
@@ -318,6 +345,8 @@ class TotemRegistrationClient:
             "location": location,
             "rustdeskId": connection.rustdesk_id,
             "rustdeskPassword": connection.rustdesk_password,
+            "screenCount": len(screens),
+            "screens": list(screens),
             "registeredAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         req = request.Request(
@@ -420,6 +449,13 @@ class LinuxHost:
     def exists(self, path: str) -> bool:
         return Path(path).exists()
 
+    def is_nonempty_file(self, path: str) -> bool:
+        target = Path(path)
+        try:
+            return target.is_file() and target.stat().st_size > 0
+        except OSError:
+            return False
+
     def mkdir(self, path: str) -> None:
         directory = Path(path)
         directory.mkdir(parents=True, exist_ok=True)
@@ -445,6 +481,31 @@ class LinuxHost:
             if line and not line[0].isspace():
                 return line.split()[0]
         return None
+
+    def detect_wayland_outputs(self) -> list[WaylandOutput]:
+        result = self.run_in_desktop_session(["wlr-randr"], check=False)
+        if result.returncode != 0:
+            return []
+        return parse_wlr_randr(result.stdout)
+
+    def audio_outputs(self) -> list[AudioOutput]:
+        try:
+            result = self.run_in_desktop_session(
+                ["env", "LC_ALL=C", "pactl", "list", "sinks"],
+                check=False,
+            )
+        except FileNotFoundError:
+            return []
+        if result.returncode != 0:
+            return []
+        return parse_pactl_sinks(result.stdout)
+
+    def remove_path(self, path: str) -> None:
+        target = Path(path)
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+        elif target.is_dir():
+            shutil.rmtree(target)
 
     def run(self, argv: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
         return subprocess.run(argv, check=check, text=True)
@@ -510,8 +571,9 @@ class LinuxHost:
         self,
         source: VideoSource,
         progress: Callable[[str], None] | None = None,
+        slot: str | None = None,
     ) -> VideoDeployment:
-        return self._video_deployer.deploy(source, progress)
+        return self._video_deployer.deploy(source, progress, slot)
 
     def mpv_command(self) -> str | None:
         return shutil.which("mpv")
@@ -598,6 +660,7 @@ class LinuxHost:
         description: str,
         location: str,
         connection: TotemConnectionDetails,
+        screens: tuple[dict, ...] = (),
     ) -> None:
         self._totem_registration.register(
             endpoint_url,
@@ -608,6 +671,7 @@ class LinuxHost:
             description,
             location,
             connection,
+            screens,
         )
 
     def install_totem_status_reporter(

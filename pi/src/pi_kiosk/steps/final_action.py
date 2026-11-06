@@ -17,6 +17,7 @@ class FinalActionStep:
     title = "Choose what to do next."
     choices = ()
     interactive = True
+    ask_after_apply = True
 
     def __init__(
         self,

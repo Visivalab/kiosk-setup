@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from pi_kiosk.host import Host
+from pi_kiosk.host import Host, WaylandOutput
 from pi_kiosk.ui import UI
 
 
@@ -14,6 +14,13 @@ class WizardContext:
     answers: dict[str, Any] = field(default_factory=dict)
     reports: list[str] = field(default_factory=list)
     state: dict[str, Any] = field(default_factory=dict)
+
+    def displays(self) -> list[WaylandOutput]:
+        """Connected screens, detected once per wizard run so every step sees the same list."""
+        if "_displays" not in self.state:
+            detect = getattr(self.host, "detect_wayland_outputs", None)
+            self.state["_displays"] = list(detect()) if detect is not None else []
+        return list(self.state["_displays"])
 
     def record_answer(self, step_id: str, answer: Any) -> None:
         self.answers[step_id] = answer

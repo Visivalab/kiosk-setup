@@ -898,6 +898,10 @@ class LinuxHostTests(unittest.TestCase):
                             rustdesk_id="987 654 321",
                             rustdesk_password="secret-pass",
                         ),
+                        (
+                            {"number": 1, "deviceName": "HDMI-A-1", "type": "webapp"},
+                            {"number": 2, "deviceName": "HDMI-A-2", "type": "webapp"},
+                        ),
                     )
 
         request = urlopen.call_args.args[0]
@@ -917,6 +921,11 @@ class LinuxHostTests(unittest.TestCase):
                 "location": "Reception",
                 "rustdeskId": "987 654 321",
                 "rustdeskPassword": "secret-pass",
+                "screenCount": 2,
+                "screens": [
+                    {"number": 1, "deviceName": "HDMI-A-1", "type": "webapp"},
+                    {"number": 2, "deviceName": "HDMI-A-2", "type": "webapp"},
+                ],
                 "registeredAt": mock.ANY,
             },
         )
@@ -1005,6 +1014,8 @@ class LinuxHostTests(unittest.TestCase):
                                         "totemType": "video",
                                         "desktopUser": "kiosk",
                                         "port": 8080,
+                                        "stateDir": mock.ANY,
+                                        "screens": [],
                                     },
                                 )
                                 self.assertIn(

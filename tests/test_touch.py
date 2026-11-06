@@ -128,3 +128,55 @@ class UpsertTouchBlockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from pi_kiosk.host import WaylandOutput  # noqa: E402
+from pi_kiosk.steps.touch import TOUCH_DISPLAY_PROMPT  # noqa: E402
+
+TWO_OUTPUTS = [WaylandOutput("HDMI-A-1", "Samsung"), WaylandOutput("HDMI-A-2", "Dell")]
+
+
+class MultiDisplayTouchTests(unittest.TestCase):
+    def test_asks_which_display_has_the_touchscreen(self):
+        host = FakeHost(wayland_outputs=TWO_OUTPUTS, touchscreen=True)
+        ui = FakeUI(answers={TOUCH_DISPLAY_PROMPT: "HDMI-A-2"})
+
+        answer = TouchStep().ask(ui, WizardContext(host=host, ui=ui))
+
+        self.assertEqual(answer, "HDMI-A-2")
+
+    def test_does_not_ask_without_a_touchscreen(self):
+        host = FakeHost(wayland_outputs=TWO_OUTPUTS, touchscreen=False)
+        ui = FakeUI()
+
+        self.assertIsNone(TouchStep().ask(ui, WizardContext(host=host, ui=ui)))
+        self.assertEqual(ui.prompts, [])
+
+    def test_maps_touch_to_the_chosen_display_even_without_rotation(self):
+        host = FakeHost(wayland_outputs=TWO_OUTPUTS, touchscreen=True)
+        context = WizardContext(host=host, ui=FakeUI())
+        context.state["display_configs"] = [
+            DisplayConfig("HDMI-A-1", "270", "clockwise"),
+            DisplayConfig("HDMI-A-2", "normal", "none"),
+        ]
+
+        report = TouchStep().apply(host, "HDMI-A-2", context)
+
+        rc_xml = host.files["/home/pi/.config/labwc/rc.xml"]
+        self.assertIn('<touch mapToOutput="HDMI-A-2" />', rc_xml)
+        self.assertNotIn("calibrationMatrix", rc_xml)
+        self.assertIn("HDMI-A-2", report)
+
+    def test_uses_the_chosen_display_rotation_for_calibration(self):
+        host = FakeHost(wayland_outputs=TWO_OUTPUTS, touchscreen=True)
+        context = WizardContext(host=host, ui=FakeUI())
+        context.state["display_configs"] = [
+            DisplayConfig("HDMI-A-1", "270", "clockwise"),
+            DisplayConfig("HDMI-A-2", "normal", "none"),
+        ]
+
+        TouchStep().apply(host, "HDMI-A-1", context)
+
+        rc_xml = host.files["/home/pi/.config/labwc/rc.xml"]
+        self.assertIn('<touch mapToOutput="HDMI-A-1" />', rc_xml)
+        self.assertIn("<calibrationMatrix>0 1 0 -1 0 1</calibrationMatrix>", rc_xml)

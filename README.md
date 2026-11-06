@@ -13,12 +13,34 @@ Invoke-RestMethod -Uri $url | Invoke-Expression
 
 To register a totem on Windows later, without configuring the kiosk again, use the **Register totem** button in the wizard or run `windows\kiosk.cmd register-totem`.
 
-The repo must be **public**. Then, on the Pi:
+The repo must be **public**. On the Pi there are two ways to run the wizard,
+with the same options: a **visual wizard** (like the Windows one) and the
+**terminal wizard**.
+
+### Visual wizard on the Pi
+
+Open a terminal on the Pi desktop and run:
+
+    curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-setup/master/kiosk.sh | sudo bash -s -- gui
+
+Or, from a checkout: `sudo ./kiosk.sh gui`.
+
+A window opens with the same groups and buttons as the Windows wizard:
+**Configure kiosk**, **Remove kiosk setup** and **Register totem**. Progress
+appears in the window and in the terminal. The window runs as the desktop
+user; the privileged work runs in the root process that opened it. If Tk is
+missing, `python3-tk` is installed first. The last answers (never passwords)
+are kept in `~/.config/pi-kiosk/gui-settings.json` and pre-fill the next run.
+
+To preview the window on any computer with Tk, without a Pi:
+`python3 pi/src/pi_kiosk/gui.py --demo --displays 2`.
+
+### Terminal wizard on the Pi
 
     curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-setup/master/kiosk.sh | sudo bash
 
 That downloads only `kiosk.sh`. The script then fetches the rest of the tree
-and gives the wizard access to `/dev/tty` so the rotation prompt still works.
+and gives the wizard access to `/dev/tty` so the prompts still work.
 
 Or copy this folder to a Pi / clone it there, then:
 
@@ -26,24 +48,33 @@ Or copy this folder to a Pi / clone it there, then:
 
 To run the standalone totem registration flow later from a checkout:
 
-    PYTHONPATH=pi/src python3 -m pi_kiosk register-totem
+    sudo env PYTHONPATH=pi/src python3 -m pi_kiosk register-totem
 
 Or directly from GitHub on the Pi:
 
     curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-setup/master/kiosk.sh | sudo bash -s -- register-totem
 
-It asks these interactive questions:
+To undo the kiosk configuration (same as **Remove kiosk setup**):
 
-1. Screen rotation
-2. RustDesk unattended password
-3. What kind of kiosk to deploy
-4. S3 ZIP path for a webapp kiosk (for example
-   `screen_1_de/screen_1_de-dist.zip`), or Dropbox link for a video kiosk
-5. Whether to register the totem now
-6. If you choose registration: totem name and optional description/location
-7. What to do next: launch now, reboot, or do nothing
+    curl -fsSL https://raw.githubusercontent.com/Visivalab/kiosk-setup/master/kiosk.sh | sudo bash -s -- cleanup
 
-Then it applies the rest and prints what it did after each step.
+The terminal wizard asks every question first and only then changes the Pi,
+so a bad link on the second screen cannot leave the first one half-configured:
+
+1. Screen rotation, once per connected screen
+2. Which screen has the touchscreen (only with several screens and a touchscreen)
+3. Whether to install RustDesk, and its unattended password (typed twice)
+4. With one screen: webapp or video, then the S3 ZIP path (for example
+   `screen_1_de/screen_1_de-dist.zip`) or the video source.
+   With several screens: one video per screen, which screen plays the sound,
+   and through which audio output.
+   A video source is a Dropbox link or an absolute local path, for example
+   `/media/pi/USB/screen1.mp4`; the file is copied, so the USB stick can be
+   removed afterwards.
+5. Whether to register the totem now, then its name and optional description/location
+
+Then it applies everything, prints what it did after each step and a summary,
+and finally asks what to do next: launch now, reboot, or do nothing.
 
 If a Wayland desktop session is available, rotation is also applied live and
 saved for future graphical logins.
@@ -51,19 +82,18 @@ saved for future graphical logins.
 This is not an image builder. Flash stock Raspberry Pi OS Desktop 64-bit
 with Imager, boot normally, run the command.
 
-## What v1 does
+## What the Pi wizard does
 
-1. Screen rotation selector:
-   - No rotation
-   - Rotate clockwise (90°)
-   - Rotate counterclockwise (90°)
-2. Disable screen blanking / sleep
-3. Desktop autologin (no password prompt on boot)
-4. RustDesk installation and unattended-access setup:
+1. Screen rotation per screen (no rotation, clockwise 90°, counterclockwise 90°).
+   With several screens they are placed side by side in one `wlr-randr` call.
+2. Touchscreen mapping to its screen, with the matching calibration
+3. Disable screen blanking / sleep
+4. Desktop autologin (no password prompt on boot)
+5. RustDesk installation and unattended-access setup (optional):
    - installs the latest official RustDesk `.deb`
    - sets the unattended-access password you provide
    - prints the generated RustDesk ID
-5. Webapp kiosk deployment from the ZIP at
+6. Webapp kiosk (one screen only) from the ZIP at
    `https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/` plus the
    path you enter:
    - downloads the webapp ZIP
@@ -72,13 +102,19 @@ with Imager, boot normally, run the command.
    - launches Chromium in kiosk mode on graphical login
    - installs a labwc cursor-hide keybind and, when `wtype` and `swayidle`
      are available, re-hides the mouse cursor after idle
+7. Or a looping video kiosk in mpv. With several screens each screen plays its
+   own video, pinned to its output with `--fs-screen-name`. Only one screen
+   plays sound; the others run with `--no-audio`. A chosen audio output that
+   has disappeared falls back to the default output.
+8. Saves the setup (never passwords) to `/etc/pi-kiosk/kiosk-state.json`, so
+   `register-totem` and the visual wizard can reuse it.
 
 The account password is not deleted. It is still used for sudo.
 
 ## Standalone totem registration
 
-The installer does not register anything remotely. Use the separate command when
-you want to register the device in your dashboard/backend:
+Registration is also available on its own, without configuring the kiosk
+again (the **Register totem** button in the visual wizard does the same):
 
     PYTHONPATH=pi/src python3 -m pi_kiosk register-totem
 
@@ -89,7 +125,8 @@ If you are not inside a checkout on the Pi, use the pipeable form instead:
 That command:
 
 - detects the machine name from the system hostname
-- asks for the totem type when it cannot reuse the current wizard selection
+- reuses the saved kiosk setup (type and every screen) when the Pi was configured;
+  otherwise asks for the totem type and reports the detected screens
 - asks for the totem name
 - asks for the totem description (optional)
 - asks for the totem location (optional)
@@ -101,8 +138,12 @@ The status reporter sends:
 
 - `totem_type`: `webapp` or `video`
 - `machineName`: the current system hostname at the moment the heartbeat is sent
-- `kiosk_running`: `true` when `labwc` is running for the desktop user
+- `kiosk_running`: `true` when the kiosk is running. With several screens this
+  means at least one video player is alive; with one screen it means `labwc`
+  is running for the desktop user
 - `webapp_running`: `true` when `127.0.0.1:8080` is answering
+- `screenCount` and `screens`: one entry per screen with its own `kiosk_running`,
+  the same shape the Windows totems send
 
 Configure the endpoint and token in [shared/kiosk.json](shared/kiosk.json) or override them with:
 
@@ -121,12 +162,18 @@ URL is inferred from `PI_KIOSK_REGISTER_TOTEM_URL` by replacing the final
 - It does not authenticate downloads from private object storage.
 - It does not configure a custom RustDesk server.
 - It does not disable touch input devices; it only maps touch when needed.
+- It does not frame-synchronise videos on different screens; they start
+  together and loop independently.
 
 ## Layout
 
 - `kiosk.sh` — root pipeable entry point; currently runs the Pi subproject.
-- `pi/src/pi_kiosk/app.py` — Pi wizard loop. Add a step here, not by forking the CLI.
-- `pi/src/pi_kiosk/steps/` — one Pi module per concern (rotation, touch, nosleep, autologin, RustDesk, webapp kiosk).
+  Commands: none (terminal wizard), `gui`, `register-totem`, `cleanup`.
+- `pi/src/pi_kiosk/app.py` — Pi wizard loop: ask everything, then apply. Add a step here, not by forking the CLI.
+- `pi/src/pi_kiosk/steps/` — one Pi module per concern (rotation, touch, nosleep, autologin, RustDesk, webapp/video kiosk, saved state).
+- `pi/src/pi_kiosk/gui.py` — the visual wizard window (Tk, runs as the desktop user).
+- `pi/src/pi_kiosk/gui_launcher.py`, `gui_session.py`, `gui_model.py` — root side of the visual wizard: opens the window, validates the form and applies it through the same steps.
+- `pi/src/pi_kiosk/cleanup.py` — removes the kiosk configuration.
 - `pi/src/pi_kiosk/host.py` — Pi system port. Tests use an in-memory fake.
 - `pi/src/pi_kiosk/linux.py` — the only Pi code that touches a real machine.
 - `windows/kiosk-gui.cmd` — portable visual Windows launcher.

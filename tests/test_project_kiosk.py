@@ -5,7 +5,7 @@ from tests.fakes import FakeHost
 
 from pi_kiosk.host import VideoSource, WebAppSource
 from pi_kiosk.steps.project_kiosk import NEXT_ACTION_PROMPT, ProjectKioskStep, TYPE_OF_PROJECT_PROMPT
-from pi_kiosk.steps.video_kiosk import VIDEO_NEXT_ACTION_PROMPT
+from pi_kiosk.steps.video_kiosk import DROPBOX_PROMPT, VIDEO_NEXT_ACTION_PROMPT
 from pi_kiosk.wizard_context import WizardContext
 
 S3_BASE_URL = "https://visivalab-totems-releases.s3.eu-west-3.amazonaws.com/"
@@ -33,7 +33,7 @@ class AskProjectKioskStepTests(unittest.TestCase):
         ui = FakeUI(
             answers={
                 TYPE_OF_PROJECT_PROMPT: "video",
-                "Dropbox link": "https://www.dropbox.com/s/example/demo.mp4?dl=0",
+                DROPBOX_PROMPT: "https://www.dropbox.com/s/example/demo.mp4?dl=0",
             }
         )
 
@@ -47,7 +47,7 @@ class AskProjectKioskStepTests(unittest.TestCase):
                 download_url="https://www.dropbox.com/s/example/demo.mp4?dl=1",
             ),
         )
-        self.assertEqual(ui.prompts, [TYPE_OF_PROJECT_PROMPT, "Dropbox link"])
+        self.assertEqual(ui.prompts, [TYPE_OF_PROJECT_PROMPT, DROPBOX_PROMPT])
 
 
 class ApplyProjectKioskStepTests(unittest.TestCase):
@@ -77,7 +77,7 @@ class ApplyProjectKioskStepTests(unittest.TestCase):
         ui = FakeUI(
             answers={
                 TYPE_OF_PROJECT_PROMPT: "video",
-                "Dropbox link": "https://www.dropbox.com/s/example/demo.mp4?dl=0",
+                DROPBOX_PROMPT: "https://www.dropbox.com/s/example/demo.mp4?dl=0",
                 VIDEO_NEXT_ACTION_PROMPT: "close",
             }
         )

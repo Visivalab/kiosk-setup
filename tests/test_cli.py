@@ -50,6 +50,7 @@ class CliTests(unittest.TestCase):
                 answers={
                     "Screen rotation": "none",
                     "RustDesk password": "secret-pass",
+                "Confirm RustDesk password": "secret-pass",
                     TYPE_OF_PROJECT_PROMPT: "webapp",
                     RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                     REGISTER_TOTEM_PROMPT: "no",
@@ -156,6 +157,17 @@ class CliTests(unittest.TestCase):
                     "connection": TotemConnectionDetails(
                         rustdesk_id="123 456 789",
                         rustdesk_password="secret-pass",
+                    ),
+                    "screens": (
+                        {
+                            "number": 1,
+                            "deviceName": "HDMI-A-1",
+                            "type": "webapp",
+                            "rotation": "none",
+                            "source": "",
+                            "port": 8080,
+                            "audio": True,
+                        },
                     ),
                 }
             ],

@@ -13,15 +13,18 @@ Guidance for coding agents working in this repository.
 
 Interactive first-boot wizard for Raspberry Pi OS Desktop (Bookworm / Trixie, labwc).
 
-v1 asks one question (screen rotation), then always:
+The Pi side mirrors the Windows wizard: rotation and content per screen
+(several screens = one looping video each), touch mapping, no blanking,
+autologin (`raspi-config` B4), optional RustDesk, webapp or video kiosk, saved
+state, optional totem registration, then a final action. It runs as a terminal
+wizard (`sudo ./kiosk.sh`) or a Tk visual wizard (`sudo ./kiosk.sh gui`), plus
+`register-totem` and `cleanup` commands.
 
-1. Writes a labwc `wlr-randr` rotation block
-2. Disables screen blanking / sleep
-3. Enables desktop autologin (`raspi-config` B4)
+The terminal wizard asks every question first, then applies. The visual wizard
+builds the same step answers in `gui_model.form_to_answers` and calls
+`Wizard.apply_answers`. Keep both paths on the same steps.
 
 Autologin does not delete the account password. SSH and sudo still use it.
-
-Not in v1: Chromium kiosk, touch remap, RustDesk. Those are extra steps, not a rewrite.
 
 ## Repository map
 
@@ -34,6 +37,13 @@ pi/src/pi_kiosk/host.py        Pi Host protocol
 pi/src/pi_kiosk/linux.py       only Pi code that touches a real machine
 pi/src/pi_kiosk/terminal_ui.py numbered selector + Done: lines
 pi/src/pi_kiosk/files.py       idempotent tagged-block edits
+pi/src/pi_kiosk/kiosk_state.py /etc/pi-kiosk/kiosk-state.json (no passwords)
+pi/src/pi_kiosk/cleanup.py     undo the kiosk configuration
+pi/src/pi_kiosk/gui.py         Tk window; runs as the desktop user, stdlib only,
+                               no pi_kiosk imports (the launcher copies it alone)
+pi/src/pi_kiosk/gui_launcher.py root side: opens the window, pipes JSON requests
+pi/src/pi_kiosk/gui_session.py  runs configure/register/cleanup, streams progress
+pi/src/pi_kiosk/gui_model.py    form -> step answers; all validation before apply
 windows/                       future Windows subproject placeholder
 tests/                         unittest, FakeHost / FakeUI
 ```

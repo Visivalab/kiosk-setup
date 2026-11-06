@@ -58,9 +58,28 @@ def reporter_config_json(config: TotemStatusReporterConfig) -> str:
             "totemType": config.totem_type,
             "desktopUser": config.desktop_user,
             "port": STATUS_PORT,
+            "stateDir": _state_dir(config.desktop_user),
+            "screens": [
+                {
+                    "number": screen.get("number"),
+                    "output": screen.get("deviceName", ""),
+                    "type": screen.get("type", ""),
+                }
+                for screen in config.screens
+            ],
         },
         indent=2,
     ) + "\n"
+
+
+def _state_dir(user: str) -> str:
+    try:
+        import pwd
+
+        home = pwd.getpwnam(user).pw_dir
+    except (ImportError, KeyError):
+        home = f"/home/{user}"
+    return f"{home}/.local/state/pi-kiosk"
 
 
 def reporter_script() -> str:
@@ -68,6 +87,7 @@ def reporter_script() -> str:
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -108,6 +128,54 @@ def _facts(config: dict[str, object]) -> tuple[bool, bool]:
     return kiosk_running, webapp_running
 
 
+def _pid_running(path: Path) -> bool | None:
+    try:
+        pid = int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    try:
+        # A stale pid file can point at a reused pid after a power cut.
+        return Path(f"/proc/{pid}/comm").read_text(encoding="utf-8").strip().startswith("mpv")
+    except OSError:
+        return True
+
+
+def _screen_facts(
+    config: dict[str, object],
+    kiosk_running: bool,
+    webapp_running: bool,
+) -> list[dict[str, object]]:
+    state_dir = Path(str(config.get("stateDir") or "/nonexistent"))
+    facts = []
+    screens = list(config.get("screens") or [])
+    for screen in screens:
+        output = str(screen.get("output", ""))
+        if screen.get("type") == "webapp":
+            running = webapp_running
+        else:
+            player = _pid_running(state_dir / f"display-{output}.pid")
+            if player is None:
+                # Multi-screen launchers remove their pid files when every player has
+                # stopped. Only the single-screen launcher keeps none; it follows labwc.
+                player = kiosk_running if len(screens) == 1 else False
+            running = player
+        facts.append(
+            {
+                "number": screen.get("number"),
+                "type": screen.get("type"),
+                "kiosk_running": bool(running),
+                "webapp_running": bool(screen.get("type") == "webapp" and webapp_running),
+            }
+        )
+    return facts
+
+
 def _machine_name(config: dict[str, object]) -> str:
     value = socket.gethostname().strip()
     if value:
@@ -122,6 +190,9 @@ def main(argv: list[str]) -> int:
 
     config = _load_config(argv[1])
     kiosk_running, webapp_running = _facts(config)
+    screens = _screen_facts(config, kiosk_running, webapp_running)
+    if screens:
+        kiosk_running = any(screen["kiosk_running"] for screen in screens)
     payload = {
         "totem_id": config["totemId"],
         "totem_type": config["totemType"],
@@ -129,6 +200,8 @@ def main(argv: list[str]) -> int:
         "checkedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "kiosk_running": kiosk_running,
         "webapp_running": webapp_running,
+        "screenCount": len(screens),
+        "screens": screens,
     }
     req = request.Request(
         str(config["endpointUrl"]),

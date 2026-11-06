@@ -32,6 +32,7 @@ class WizardTests(unittest.TestCase):
             answers={
                 "Screen rotation": "clockwise",
                 "RustDesk password": "secret-pass",
+                "Confirm RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
                 RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 REGISTER_TOTEM_PROMPT: "no",
@@ -45,14 +46,16 @@ class WizardTests(unittest.TestCase):
             ui.prompts,
             [
                 "Screen rotation",
+                "Install RustDesk for remote access?",
                 "RustDesk password",
+                "Confirm RustDesk password",
                 TYPE_OF_PROJECT_PROMPT,
                 RELEASE_URL_PROMPT,
                 REGISTER_TOTEM_PROMPT,
                 NEXT_ACTION_PROMPT,
             ],
         )
-        self.assertEqual(len(reports), 9)
+        self.assertEqual(len(reports), 10)
         self.assertTrue(all(item.lower().startswith("done:") for item in reports))
         self.assertEqual(
             [message for message in ui.messages if message.lower().startswith("done:")],
@@ -65,12 +68,13 @@ class WizardTests(unittest.TestCase):
         self.assertIn("autologin", reports[3].lower())
         self.assertIn("rustdesk", reports[4].lower())
         self.assertIn("kiosk", reports[5].lower())
-        self.assertIn("skipped totem registration", reports[6].lower())
-        self.assertIn("setup summary", reports[7].lower())
-        self.assertIn("rustdesk unattended access", reports[7].lower())
-        self.assertIn("configured automatic mouse hide after idle", reports[7].lower())
-        self.assertIn("totem registration was skipped", reports[7].lower())
-        self.assertIn("simulated autorun", reports[8].lower())
+        self.assertIn("saved the kiosk setup", reports[6].lower())
+        self.assertIn("skipped totem registration", reports[7].lower())
+        self.assertIn("setup summary", reports[8].lower())
+        self.assertIn("rustdesk unattended access", reports[8].lower())
+        self.assertIn("configured automatic mouse hide after idle", reports[8].lower())
+        self.assertIn("totem registration was skipped", reports[8].lower())
+        self.assertIn("simulated autorun", reports[9].lower())
 
         autostart = host.files["/home/pi/.config/labwc/autostart"]
         self.assertIn("--transform 270", autostart)
@@ -125,6 +129,7 @@ class WizardTests(unittest.TestCase):
             answers={
                 "Screen rotation": "clockwise",
                 "RustDesk password": "secret-pass",
+                "Confirm RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
                 RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 REGISTER_TOTEM_PROMPT: "no",
@@ -153,6 +158,7 @@ class WizardTests(unittest.TestCase):
             answers={
                 "Screen rotation": "none",
                 "RustDesk password": "secret-pass",
+                "Confirm RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
                 RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 REGISTER_TOTEM_PROMPT: "no",
@@ -171,6 +177,7 @@ class WizardTests(unittest.TestCase):
             answers={
                 "Screen rotation": "none",
                 "RustDesk password": "secret-pass",
+                "Confirm RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
                 RELEASE_URL_PROMPT: DEMO_RELEASE_PATH,
                 REGISTER_TOTEM_PROMPT: "yes",
@@ -235,6 +242,7 @@ class RegisterTotemStepTests(unittest.TestCase):
                 "Totem location": "",
                 RUSTDESK_SET_PASSWORD_PROMPT: "yes",
                 "RustDesk password": "secret-pass",
+                "Confirm RustDesk password": "secret-pass",
             }
         )
         context = WizardContext(host=host, ui=ui)

@@ -34,6 +34,25 @@ class VideoDeployment:
 class VideoSource:
     shared_url: str
     download_url: str
+    local_path: str = ""
+
+
+@dataclass(frozen=True)
+class WaylandOutput:
+    """One connected screen as reported by wlr-randr."""
+
+    name: str
+    description: str = ""
+    width: int = 0
+    height: int = 0
+
+
+@dataclass(frozen=True)
+class AudioOutput:
+    """A playback device. `id` is the value mpv takes in --audio-device."""
+
+    id: str
+    name: str
 
 
 @dataclass(frozen=True)
@@ -49,6 +68,7 @@ class TotemStatusReporterConfig:
     totem_id: str
     totem_type: str
     desktop_user: str
+    screens: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -74,6 +94,8 @@ class GuardHost(Protocol):
 class FileHost(Protocol):
     def exists(self, path: str) -> bool: ...
 
+    def is_nonempty_file(self, path: str) -> bool: ...
+
     def mkdir(self, path: str) -> None: ...
 
     def read_file(self, path: str) -> str: ...
@@ -83,6 +105,8 @@ class FileHost(Protocol):
 
 class RotationHost(UserHost, FileHost, Protocol):
     def detect_wayland_output(self) -> str | None: ...
+
+    def detect_wayland_outputs(self) -> list[WaylandOutput]: ...
 
     def run_in_desktop_session(self, argv: list[str], check: bool = True) -> object: ...
 
@@ -138,7 +162,10 @@ class VideoHost(UserHost, FileHost, PackageHost, VideoLaunchHost, Protocol):
         self,
         source: VideoSource,
         progress: Callable[[str], None] | None = None,
+        slot: str | None = None,
     ) -> VideoDeployment: ...
+
+    def audio_outputs(self) -> list[AudioOutput]: ...
 
     def mpv_command(self) -> str | None: ...
 
@@ -173,6 +200,7 @@ class TotemRegistrationHost(UserHost, RustDeskHost, Protocol):
         description: str,
         location: str,
         connection: TotemConnectionDetails,
+        screens: tuple[dict, ...] = (),
     ) -> None: ...
 
     def install_totem_status_reporter(
@@ -196,6 +224,8 @@ class Host(Protocol):
 
     def exists(self, path: str) -> bool: ...
 
+    def is_nonempty_file(self, path: str) -> bool: ...
+
     def mkdir(self, path: str) -> None: ...
 
     def read_file(self, path: str) -> str: ...
@@ -203,6 +233,12 @@ class Host(Protocol):
     def write_file(self, path: str, content: str) -> None: ...
 
     def detect_wayland_output(self) -> str | None: ...
+
+    def detect_wayland_outputs(self) -> list[WaylandOutput]: ...
+
+    def audio_outputs(self) -> list[AudioOutput]: ...
+
+    def remove_path(self, path: str) -> None: ...
 
     def run(self, argv: list[str], check: bool = True) -> object: ...
 
@@ -218,6 +254,7 @@ class Host(Protocol):
         self,
         source: VideoSource,
         progress: Callable[[str], None] | None = None,
+        slot: str | None = None,
     ) -> VideoDeployment: ...
 
     def chromium_command(self) -> str | None: ...
@@ -265,6 +302,7 @@ class Host(Protocol):
         description: str,
         location: str,
         connection: TotemConnectionDetails,
+        screens: tuple[dict, ...] = (),
     ) -> None: ...
 
     def install_totem_status_reporter(

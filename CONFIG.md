@@ -51,7 +51,11 @@ unrelated lines from existing labwc configuration files.
 | webapp server log | `<home>/.local/state/pi-kiosk/webapp-server.log` |
 | webapp startup heartbeat log | `<home>/.local/state/pi-kiosk/webapp-heartbeat.log` |
 | video launcher | `<home>/.config/pi-kiosk/video-kiosk.sh` |
-| deployed video | `<home>/.local/share/pi-kiosk/video/current/` |
+| deployed video (one screen) | `<home>/.local/share/pi-kiosk/video/current/` |
+| deployed videos (several screens) | `<home>/.local/share/pi-kiosk/video/<output>/current/` |
+| video player pids (several screens) | `<home>/.local/state/pi-kiosk/display-<output>.pid` |
+| saved kiosk setup (no passwords) | `/etc/pi-kiosk/kiosk-state.json` |
+| visual wizard answers (no passwords) | `<home>/.config/pi-kiosk/gui-settings.json` |
 | saved RustDesk password | `/etc/pi-kiosk/rustdesk.json` |
 | totem status reporter | `/usr/local/lib/pi-kiosk/totem-status.py` |
 | totem status configuration | `/etc/pi-kiosk/totem-status.json` |
@@ -92,8 +96,22 @@ These transform values follow the output coordinate convention used by
 
 ### How does the installer choose the display output?
 
-It runs `wlr-randr` inside the desktop Wayland session and uses the first output
-reported. If the output cannot be detected, it falls back to `HDMI-A-1`.
+It runs `wlr-randr` inside the desktop Wayland session and lists every enabled
+output. With one screen it uses that output; if none can be detected, it falls
+back to `HDMI-A-1`.
+
+### What happens with two screens?
+
+Rotation is asked once per screen and written as one command that also places
+the screens side by side, for example:
+
+```text
+wlr-randr --output HDMI-A-1 --transform 270 --pos 0,0 --output HDMI-A-2 --transform normal --pos 1080,0
+```
+
+On a Raspberry Pi the output names follow the physical HDMI ports
+(`HDMI-A-1` is HDMI0, next to the power input), so they do not swap after a
+reboot.
 
 ### When does rotation take effect?
 
@@ -133,8 +151,13 @@ No touch configuration is written.
 
 ### What happens when the display is not rotated?
 
-The touchscreen is detected, but no calibration matrix is needed and no mapping
-block is added.
+With one screen, no calibration matrix is needed and no mapping block is added.
+
+### What happens with two screens?
+
+The wizard asks which screen has the touchscreen. Touch is then always mapped
+to that output, even without rotation, so a touch does not spread across both
+screens. The calibration matrix follows that screen's rotation.
 
 ### Does the installer switch the Pi to X11?
 
@@ -198,6 +221,13 @@ exists and continues to be used for SSH and `sudo`.
 The Raspberry Pi desktop user from which setup was invoked with `sudo`.
 
 ## Step 5: RustDesk unattended access
+
+### Can RustDesk be skipped?
+
+Yes. Answer no to "Install RustDesk for remote access?" (or check **Skip
+RustDesk** in the visual wizard). Nothing is installed, and a registration made
+in that run sends empty RustDesk credentials. The password is typed twice when
+RustDesk is installed.
 
 ### How is RustDesk installed?
 
@@ -462,10 +492,24 @@ ps aux | grep -E 'chromium|http.server'
 
 ## Step 7B: video kiosk
 
-### Which video URLs are accepted?
+### Which video sources are accepted?
 
-The wizard currently accepts Dropbox shared file URLs over HTTPS. It rewrites
-the `dl` query parameter to `dl=1` to request a direct download.
+Dropbox shared file URLs over HTTPS (the `dl` query parameter is rewritten to
+`dl=1` to request a direct download), or an absolute local path such as
+`/media/pi/USB/screen1.mp4`. A local file is copied into the deployment folder,
+so the USB stick can be removed after setup.
+
+### How do two screens play video?
+
+Each screen gets its own video, downloaded into
+`<home>/.local/share/pi-kiosk/video/<output>/current/`. The single
+`video-kiosk.sh` launcher starts one mpv per screen with
+`--fs-screen-name=<output>` and waits for all of them. Only the screen chosen
+for audio plays sound; the others use `--no-audio`. If the chosen audio output
+is not present when the launcher starts, mpv uses the default output. The
+players start together but are not frame-synchronised.
+
+Webapp kiosks remain single-screen, as on Windows.
 
 ### Where is the video stored?
 
@@ -589,8 +633,12 @@ The reporter sends:
 - `totem_type`: `webapp` or `video`.
 - `machineName`: the hostname at the time of the status check.
 - `checkedAt`: the current UTC timestamp.
-- `kiosk_running`: whether a `labwc` process is running for the desktop user.
+- `kiosk_running`: with several screens, whether at least one video player is
+  alive (from the pid files); with one screen, whether a `labwc` process is
+  running for the desktop user.
 - `webapp_running`: whether TCP port `127.0.0.1:8080` accepts a connection.
+- `screenCount` and `screens`: each screen's number, type and its own
+  `kiosk_running` / `webapp_running`.
 
 For a video kiosk, `webapp_running` is normally false because no HTTP server is
 started.
@@ -717,7 +765,10 @@ systemd units, and installed packages use system locations under `/etc`,
 
 ### Is there an automatic uninstall command?
 
-No. `pi-kiosk` currently configures and updates the Pi but does not provide an
-uninstall command. Removal should account for the tagged labwc blocks, deployed
-files, launchers, RustDesk package and credentials, and optional status-reporter
-service and timer described above.
+Yes: `sudo ./kiosk.sh cleanup`, or **Remove kiosk setup** in the visual wizard.
+It stops the kiosk players, browser and local server, removes the tagged labwc
+blocks, the status timer and service, the pi-kiosk files under the desktop
+user's home, `/etc/pi-kiosk` and `/usr/local/lib/pi-kiosk`, disables desktop
+autologin (`raspi-config` B3) and restores normal rotation on every screen.
+RustDesk, mpv, the blanking setting and the remote registration record are left
+unchanged.

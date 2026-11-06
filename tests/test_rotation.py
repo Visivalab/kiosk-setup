@@ -101,3 +101,56 @@ class ApplyRotationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from pi_kiosk.host import WaylandOutput  # noqa: E402
+
+TWO_OUTPUTS = [
+    WaylandOutput(name="HDMI-A-1", description="Samsung", width=1920, height=1080),
+    WaylandOutput(name="HDMI-A-2", description="Dell", width=1920, height=1080),
+]
+
+
+class MultiDisplayRotationTests(unittest.TestCase):
+    def test_asks_rotation_once_per_display(self):
+        host = FakeHost(wayland_outputs=TWO_OUTPUTS)
+        ui = FakeUI(
+            answers={
+                "Screen rotation - display 1 (HDMI-A-1 Samsung)": "clockwise",
+                "Screen rotation - display 2 (HDMI-A-2 Dell)": "none",
+            }
+        )
+
+        answer = RotationStep().ask(ui, WizardContext(host=host, ui=ui))
+
+        self.assertEqual(answer, {"HDMI-A-1": "clockwise", "HDMI-A-2": "none"})
+
+    def test_single_display_keeps_the_plain_prompt(self):
+        host = FakeHost()
+        ui = FakeUI(answers={"Screen rotation": "none"})
+
+        self.assertEqual(RotationStep().ask(ui, WizardContext(host=host, ui=ui)), "none")
+
+    def test_rotates_every_display_and_lays_them_out_side_by_side(self):
+        host = FakeHost(wayland_outputs=TWO_OUTPUTS)
+        context = WizardContext(host=host, ui=FakeUI())
+
+        report = RotationStep().apply(
+            host, {"HDMI-A-1": "clockwise", "HDMI-A-2": "none"}, context
+        )
+
+        command = (
+            "wlr-randr --output HDMI-A-1 --transform 270 --pos 0,0 "
+            "--output HDMI-A-2 --transform normal --pos 1080,0"
+        )
+        self.assertIn(command, host.files["/home/pi/.config/labwc/autostart"])
+        self.assertIn(command.split(), host.desktop_session_commands)
+        self.assertEqual(
+            context.state["display_configs"],
+            [
+                DisplayConfig("HDMI-A-1", "270", "clockwise", True),
+                DisplayConfig("HDMI-A-2", "normal", "none", True),
+            ],
+        )
+        self.assertEqual(context.state["display_config"], context.state["display_configs"][0])
+        self.assertIn("2 displays", report)

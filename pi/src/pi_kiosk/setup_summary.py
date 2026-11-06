@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from pi_kiosk.display import DISPLAY_CONFIG_KEY, DisplayConfig, choice_id_for_transform
+from pi_kiosk.display import (
+    DISPLAY_CONFIG_KEY,
+    DISPLAY_CONFIGS_KEY,
+    DisplayConfig,
+    choice_id_for_transform,
+)
 from pi_kiosk.host import (
     RustDeskInstall,
     VideoDeployment,
@@ -12,9 +17,9 @@ from pi_kiosk.steps.autologin import AutologinStep
 from pi_kiosk.steps.nosleep import NoSleepStep
 from pi_kiosk.steps.project_kiosk import ProjectKioskStep
 from pi_kiosk.steps.register_totem import RegisterTotemStep
-from pi_kiosk.steps.rustdesk import RustDeskStep
+from pi_kiosk.steps.rustdesk import RUSTDESK_SKIPPED_KEY, RustDeskStep
 from pi_kiosk.steps.touch import TouchResult, TouchStep
-from pi_kiosk.steps.video_kiosk import VideoKioskStep
+from pi_kiosk.steps.video_kiosk import VIDEO_SCREENS_KEY, VideoKioskStep
 from pi_kiosk.steps.webapp_kiosk import WebAppKioskStep
 from pi_kiosk.totem_registration import TotemRegistrationRequest, TotemRegistrationResult
 from pi_kiosk.wizard_context import WizardContext
@@ -41,6 +46,16 @@ def render_setup_summary(context: WizardContext) -> str:
 
 
 def _rotation_lines(context: WizardContext) -> list[str]:
+    configs = context.state.get(DISPLAY_CONFIGS_KEY) or []
+    if len(configs) > 1:
+        when = "applied live" if all(item.applied_live for item in configs) else "applies on the next graphical login"
+        return [
+            _checked(
+                f"Screen rotation on {item.output} set to "
+                f"{_ROTATION_LABELS.get(item.choice_id, item.transform)}; {when}"
+            )
+            for item in configs
+        ]
     display_config = context.state.get(DISPLAY_CONFIG_KEY)
     if not isinstance(display_config, DisplayConfig):
         return []
@@ -68,6 +83,12 @@ def _touch_lines(context: WizardContext) -> list[str]:
         return []
     if not touch_result.touchscreen_detected:
         return [_checked("No touch screen detected, so no touch mapping changes were needed")]
+    if touch_result.output:
+        return [
+            _checked(
+                f"Touch input was mapped to {touch_result.output} with {touch_result.rotation_label}"
+            )
+        ]
     if not touch_result.mapping_updated:
         return [
             _checked(
@@ -96,6 +117,8 @@ def _autologin_lines(context: WizardContext) -> list[str]:
 
 
 def _rustdesk_lines(context: WizardContext) -> list[str]:
+    if context.state.get(RUSTDESK_SKIPPED_KEY):
+        return [_checked("RustDesk was skipped; remote access is not available")]
     install = context.state.get(RustDeskStep.id)
     if not isinstance(install, RustDeskInstall):
         return []
@@ -153,6 +176,21 @@ def _video_lines(context: WizardContext) -> list[str]:
         return []
 
     lines: list[str] = []
+    screens = context.state.get(VIDEO_SCREENS_KEY) or []
+    if len(screens) > 1:
+        for screen, screen_deployment in screens:
+            sound = "with sound" if screen.audio else "muted"
+            lines.append(
+                _checked(
+                    f"{screen.output} plays {screen.source.shared_url} from "
+                    f"{screen_deployment.video_path} ({sound})"
+                )
+            )
+        lines.append(_checked(f"Wrote the video launcher to {deployment.launcher_path}"))
+        lines.append(
+            _checked("Configured labwc autostart to start every screen on the next graphical login")
+        )
+        return lines
     source = _project_source(context, VideoSource)
     if source is not None and source.shared_url:
         lines.append(_checked(f"Downloaded the video from {source.shared_url}"))

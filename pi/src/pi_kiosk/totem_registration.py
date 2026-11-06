@@ -6,7 +6,12 @@ from typing import Callable
 
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.host import RustDeskHost, TotemRegistrationHost, TotemStatusReporterConfig
+from pi_kiosk.host import (
+    RustDeskHost,
+    TotemConnectionDetails,
+    TotemRegistrationHost,
+    TotemStatusReporterConfig,
+)
 from pi_kiosk.shared_config import config as shared_config
 from pi_kiosk.totem_status import derive_status_url
 from pi_kiosk.ui import UI
@@ -47,6 +52,8 @@ class TotemRegistrationRequest:
     location: str
     install_rustdesk: bool = False
     rustdesk_password: str | None = None
+    screens: tuple[dict, ...] = ()
+    skip_rustdesk: bool = False
 
 
 @dataclass(frozen=True)
@@ -117,6 +124,8 @@ class TotemRegistrar:
             raise UserFacingError("Totem registration is not configured.")
 
         machine_name = host.machine_name().strip()
+        screens = len(registration.screens)
+        screen_note = f" with {screens} screen(s)" if screens else ""
         if not machine_name:
             raise UserFacingError("Could not determine the machine name for this device.")
 
@@ -128,7 +137,11 @@ class TotemRegistrar:
         elif registration.rustdesk_password:
             host.configure_rustdesk_password(registration.rustdesk_password)
 
-        connection = host.connection_details()
+        connection = (
+            TotemConnectionDetails(rustdesk_id=None, rustdesk_password=None)
+            if registration.skip_rustdesk
+            else host.connection_details()
+        )
         host.register_totem(
             config.endpoint_url,
             config.token,
@@ -138,6 +151,7 @@ class TotemRegistrar:
             registration.description,
             registration.location,
             connection,
+            registration.screens,
         )
         status_endpoint_url = derive_status_url(config.endpoint_url)
         if status_endpoint_url:
@@ -148,6 +162,7 @@ class TotemRegistrar:
                     totem_id=machine_name,
                     totem_type=registration.totem_type,
                     desktop_user=host.user(),
+                    screens=registration.screens,
                 )
             )
             if warning:
@@ -155,7 +170,7 @@ class TotemRegistrar:
                     machine_name=machine_name,
                     detail=warning,
                     report=(
-                        f"Done: totem registered for machine {machine_name}. "
+                        f"Done: totem registered for machine {machine_name}{screen_note}. "
                         f"{warning}"
                     ),
                 )
@@ -163,7 +178,7 @@ class TotemRegistrar:
                 machine_name=machine_name,
                 detail="Status reporter installed.",
                 report=(
-                    f"Done: totem registered for machine {machine_name}. "
+                    f"Done: totem registered for machine {machine_name}{screen_note}. "
                     "Status reporter installed."
                 ),
             )
@@ -174,7 +189,7 @@ class TotemRegistrar:
             machine_name=machine_name,
             detail=detail,
             report=(
-                f"Done: totem registered for machine {machine_name}. "
+                f"Done: totem registered for machine {machine_name}{screen_note}. "
                 f"{detail}"
             ),
         )

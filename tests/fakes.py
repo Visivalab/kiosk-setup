@@ -2,11 +2,13 @@ from dataclasses import dataclass
 from typing import Callable
 
 from pi_kiosk.host import (
+    AudioOutput,
     RustDeskInstall,
     TotemConnectionDetails,
     TotemStatusReporterConfig,
     VideoDeployment,
     VideoSource,
+    WaylandOutput,
     WebAppDeployment,
     WebAppSource,
 )
@@ -36,6 +38,8 @@ class FakeHost:
         machine_name: str = "pi-kiosk-01",
         files: dict[str, str] | None = None,
         wayland_output: str | None = "HDMI-A-1",
+        wayland_outputs: list[WaylandOutput] | None = None,
+        audio_outputs: list[AudioOutput] | None = None,
         raspberry_pi: bool = True,
         root: bool = True,
         desktop_session_returncode: int = 0,
@@ -55,6 +59,15 @@ class FakeHost:
         self.machine = machine_name
         self.files: dict[str, str] = dict(files or {})
         self.wayland_output = wayland_output
+        if wayland_outputs is None:
+            wayland_outputs = (
+                [WaylandOutput(name=wayland_output, width=1920, height=1080)]
+                if wayland_output
+                else []
+            )
+        self.wayland_outputs = list(wayland_outputs)
+        self.audio_output_list = list(audio_outputs or [])
+        self.removed_paths: list[str] = []
         self.raspberry_pi = raspberry_pi
         self.root = root
         self.desktop_session_returncode = desktop_session_returncode
@@ -82,6 +95,7 @@ class FakeHost:
         self.webapp_deploy_requests: list[WebAppSource] = []
         self.webapp_progress_messages: list[str] = []
         self.video_deploy_requests: list[VideoSource] = []
+        self.video_deploy_slots: list[str | None] = []
         self.video_progress_messages: list[str] = []
         self.launched_kiosk_paths: list[str] = []
         self.launched_server_paths: list[str] = []
@@ -116,6 +130,9 @@ class FakeHost:
             return True
         return any(entry.startswith(path.rstrip("/") + "/") for entry in self.files)
 
+    def is_nonempty_file(self, path: str) -> bool:
+        return bool(self.files.get(path))
+
     def mkdir(self, path: str) -> None:
         self.directories.add(path)
 
@@ -133,6 +150,18 @@ class FakeHost:
 
     def detect_wayland_output(self) -> str | None:
         return self.wayland_output
+
+    def detect_wayland_outputs(self) -> list[WaylandOutput]:
+        return list(self.wayland_outputs)
+
+    def audio_outputs(self) -> list[AudioOutput]:
+        return list(self.audio_output_list)
+
+    def remove_path(self, path: str) -> None:
+        self.removed_paths.append(path)
+        prefix = path.rstrip("/") + "/"
+        for name in [name for name in self.files if name == path or name.startswith(prefix)]:
+            del self.files[name]
 
     def run(self, argv: list[str], check: bool = True) -> CommandResult:
         self.commands.append(list(argv))
@@ -163,8 +192,10 @@ class FakeHost:
         self,
         source: VideoSource,
         progress: Callable[[str], None] | None = None,
+        slot: str | None = None,
     ) -> VideoDeployment:
         self.video_deploy_requests.append(source)
+        self.video_deploy_slots.append(slot)
         if progress is not None:
             for message in (
                 "Preparing Dropbox download",
@@ -174,6 +205,12 @@ class FakeHost:
             ):
                 progress(message)
                 self.video_progress_messages.append(message)
+        if slot is not None:
+            name = source.local_path.rsplit("/", 1)[-1] if source.local_path else f"{slot}.mp4"
+            return VideoDeployment(
+                video_path=f"{self.home_dir}/.local/share/pi-kiosk/video/{slot}/current/{name}",
+                file_name=name,
+            )
         return self.deployed_video
 
     def chromium_command(self) -> str | None:
@@ -260,6 +297,7 @@ class FakeHost:
         description: str,
         location: str,
         connection: TotemConnectionDetails,
+        screens: tuple[dict, ...] = (),
     ) -> None:
         self.totem_registration_requests.append(
             {
@@ -271,6 +309,7 @@ class FakeHost:
                 "description": description,
                 "location": location,
                 "connection": connection,
+                "screens": screens,
             }
         )
 
