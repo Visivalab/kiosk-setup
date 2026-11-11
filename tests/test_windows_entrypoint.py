@@ -214,6 +214,12 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("Copy-Item -LiteralPath", video)
         self.assertIn("Invoke-WebRequest", video)
 
+    def test_local_video_on_the_same_disk_is_hardlinked_and_copies_check_space(self):
+        video = read("src", "steps", "video.ps1")
+
+        self.assertIn("CreateHardLink", video)
+        self.assertIn("Not enough free space", video)
+
     def test_every_display_gets_its_own_video_directory(self):
         video = read("src", "steps", "video.ps1")
 

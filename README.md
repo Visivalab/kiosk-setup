@@ -69,8 +69,9 @@ so a bad link on the second screen cannot leave the first one half-configured:
    With several screens: one video per screen, which screen plays the sound,
    and through which audio output.
    A video source is a Dropbox link or an absolute local path, for example
-   `/media/pi/USB/screen1.mp4`; the file is copied, so the USB stick can be
-   removed afterwards.
+   `/media/pi/USB/screen1.mp4`. A file already on the Pi's disk is hard-linked
+   (no copy, no extra space); a file on a USB stick is copied, so the stick can
+   be removed afterwards.
 5. Whether to register the totem now, then its name and optional description/location
 
 Then it applies everything, prints what it did after each step and a summary,

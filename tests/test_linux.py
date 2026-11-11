@@ -1,4 +1,5 @@
 import json
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -12,11 +13,16 @@ from urllib import error
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import TotemConnectionDetails, TotemStatusReporterConfig, VideoSource, WebAppSource
 from pi_kiosk.linux import (
+    VIDEO_SPACE_RESERVE,
     LinuxHost,
     NeedSudoUser,
     _libinput_reports_touch,
     _select_rustdesk_deb_asset,
 )
+
+
+def shutil_usage(free: int):
+    return mock.Mock(total=free * 2, used=free, free=free)
 
 
 class FakeResponse(BytesIO):
@@ -922,6 +928,104 @@ class LinuxHostTests(unittest.TestCase):
                                         download_url="https://www.dropbox.com/s/example/demo.mp4?dl=1",
                                     )
                                 )
+
+    def _deploy_local(self, host: LinuxHost, home: Path, source: Path, owned: list[Path] | None = None):
+        own = (lambda path: owned.append(path)) if owned is not None else (lambda path: None)
+        with mock.patch.object(host, "home", return_value=str(home)):
+            with mock.patch.object(host, "_own", side_effect=own):
+                return host.deploy_video(
+                    VideoSource(shared_url=str(source), download_url="", local_path=str(source)),
+                    slot="HDMI-A-1",
+                )
+
+    def _local_video_tree(self, tmp: str) -> tuple[Path, Path]:
+        home = Path(tmp) / "home" / "pi"
+        home.mkdir(parents=True)
+        source = home / "Videos" / "promo.mp4"
+        source.parent.mkdir()
+        source.write_bytes(b"v" * 8)
+        return home, source
+
+    def test_local_video_on_the_same_disk_is_hardlinked_not_copied(self):
+        host = LinuxHost()
+        owned: list[Path] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home, source = self._local_video_tree(tmp)
+            deployment = self._deploy_local(host, home, source, owned)
+            deployed = Path(deployment.video_path)
+
+            self.assertTrue(deployed.samefile(source))
+            self.assertEqual(source.stat().st_nlink, 2)
+            self.assertNotIn(deployed, owned, "chown would also change the user's original file")
+
+            source.unlink()
+            self.assertEqual(deployed.read_bytes(), b"v" * 8)
+
+    def test_redeploying_the_same_local_video_keeps_it(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home, source = self._local_video_tree(tmp)
+            first = Path(self._deploy_local(host, home, source).video_path)
+            second = Path(self._deploy_local(host, home, first).video_path)
+
+            self.assertEqual(second.read_bytes(), b"v" * 8)
+            self.assertTrue(second.samefile(source))
+
+    def test_local_video_on_another_disk_is_copied(self):
+        host = LinuxHost()
+        owned: list[Path] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home, source = self._local_video_tree(tmp)
+            with mock.patch("os.link", side_effect=OSError(18, "Invalid cross-device link")):
+                deployment = self._deploy_local(host, home, source, owned)
+            deployed = Path(deployment.video_path)
+
+            self.assertFalse(deployed.samefile(source))
+            self.assertEqual(deployed.read_bytes(), b"v" * 8)
+            self.assertIn(deployed, owned)
+
+    def test_copy_removes_the_previous_video_first_when_space_is_tight(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home, source = self._local_video_tree(tmp)
+            old = home / ".local" / "share" / "pi-kiosk" / "video" / "HDMI-A-1" / "current" / "old.mp4"
+            old.parent.mkdir(parents=True)
+            old.write_bytes(b"o" * 8)
+            usage = shutil_usage(free=VIDEO_SPACE_RESERVE + 4)
+            real_copy = shutil.copyfile
+
+            def copy_after_cleanup(src, dst):
+                self.assertFalse(old.exists(), "the old video must go before the copy starts")
+                return real_copy(src, dst)
+
+            with mock.patch("os.link", side_effect=OSError(18, "Invalid cross-device link")):
+                with mock.patch("shutil.disk_usage", return_value=usage):
+                    with mock.patch("shutil.copyfile", side_effect=copy_after_cleanup):
+                        deployment = self._deploy_local(host, home, source)
+
+            self.assertFalse(old.exists())
+            self.assertEqual(Path(deployment.video_path).read_bytes(), b"v" * 8)
+
+    def test_copy_refuses_early_when_the_video_cannot_fit(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home, source = self._local_video_tree(tmp)
+            old = home / ".local" / "share" / "pi-kiosk" / "video" / "HDMI-A-1" / "current" / "old.mp4"
+            old.parent.mkdir(parents=True)
+            old.write_bytes(b"o" * 2)
+            usage = shutil_usage(free=VIDEO_SPACE_RESERVE + 4)
+
+            with mock.patch("os.link", side_effect=OSError(18, "Invalid cross-device link")):
+                with mock.patch("shutil.disk_usage", return_value=usage):
+                    with self.assertRaisesRegex(UserFacingError, "Not enough free space"):
+                        self._deploy_local(host, home, source)
+
+            self.assertEqual(old.read_bytes(), b"o" * 2, "the running kiosk keeps its video")
 
     def test_register_totem_posts_json_payload_with_machine_name(self):
         host = LinuxHost()

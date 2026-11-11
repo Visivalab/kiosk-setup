@@ -515,8 +515,19 @@ ps aux | grep -E 'chromium|http.server'
 
 Dropbox shared file URLs over HTTPS (the `dl` query parameter is rewritten to
 `dl=1` to request a direct download), or an absolute local path such as
-`/media/pi/USB/screen1.mp4`. A local file is copied into the deployment folder,
-so the USB stick can be removed after setup.
+`/media/pi/USB/screen1.mp4`.
+
+A local file that is already on the same disk as the deployment folder (for
+example `~/Videos/promo.mp4`) is hard-linked into it: no copy, no extra space,
+and the kiosk keeps playing even if the original name is deleted. Its owner and
+permissions are left untouched, because a hard link shares them with the
+original.
+
+A file on another disk (a USB stick) is copied, so the stick can be removed
+after setup. Before copying, the wizard checks free space and keeps a 64 MB
+margin. If the new video only fits once the previous one is gone, the previous
+video is removed first; if it cannot fit at all, setup stops before copying and
+the running kiosk keeps its current video.
 
 ### How do two screens play video?
 

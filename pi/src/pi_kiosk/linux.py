@@ -132,6 +132,10 @@ class WebAppDeployer:
         )
 
 
+# Kept free when copying a video, so a full SD card does not break the desktop.
+VIDEO_SPACE_RESERVE = 64 * 1024 * 1024
+
+
 class VideoDeployer:
     def __init__(self, host: LinuxHost) -> None:
         self._host = host
@@ -155,8 +159,11 @@ class VideoDeployer:
                 shutil.rmtree(stage_dir)
             stage_dir.mkdir(parents=True, exist_ok=True)
 
+            shared_file = False
             if source.local_path:
-                video_path = self._copy_local_video(Path(source.local_path), stage_dir, progress)
+                video_path, shared_file = self._place_local_video(
+                    Path(source.local_path), stage_dir, current_dir, progress
+                )
             else:
                 self._host._report_progress(progress, "Preparing Dropbox download")
                 file_name = _video_file_name(source.download_url)
@@ -174,28 +181,83 @@ class VideoDeployer:
                 shutil.rmtree(current_dir)
             stage_dir.replace(current_dir)
 
-        self._host._own_tree(current_dir)
+        if shared_file:
+            # A hard link shares owner and mode with the user's original: leave it alone.
+            self._host._own_within_home(current_dir)
+        else:
+            self._host._own_tree(current_dir)
         deployed_path = current_dir / video_path.name
         return VideoDeployment(
             video_path=str(deployed_path),
             file_name=video_path.name,
         )
 
-    def _copy_local_video(
+    def _place_local_video(
         self,
         source: Path,
         stage_dir: Path,
+        current_dir: Path,
         progress: Callable[[str], None] | None,
-    ) -> Path:
+    ) -> tuple[Path, bool]:
+        """Hard-link a file that is already on this disk; copy only from another one (USB)."""
         if not source.is_file() or source.stat().st_size == 0:
             raise UserFacingError(f"Local video file is missing or empty: {source}")
-        self._host._report_progress(progress, f"Copying local video {source.name}")
         target = stage_dir / source.name
+        try:
+            os.link(source, target)
+        except OSError:
+            pass
+        else:
+            self._host._report_progress(
+                progress, f"Using local video {source.name} in place (already on this disk)"
+            )
+            return target, True
+
+        self._make_room(source, stage_dir, current_dir, progress)
+        self._host._report_progress(progress, f"Copying local video {source.name}")
         try:
             shutil.copyfile(source, target)
         except OSError as exc:
             raise UserFacingError(f"Could not copy the local video {source}: {exc}.") from exc
-        return target
+        return target, False
+
+    def _make_room(
+        self,
+        source: Path,
+        stage_dir: Path,
+        current_dir: Path,
+        progress: Callable[[str], None] | None,
+    ) -> None:
+        """Fail before copying, not halfway; drop the old video only if that makes it fit."""
+        needed = source.stat().st_size + VIDEO_SPACE_RESERVE
+        free = shutil.disk_usage(stage_dir).free
+        if free >= needed:
+            return
+        reclaimable = _reclaimable_bytes(current_dir)
+        if free + reclaimable < needed:
+            raise UserFacingError(
+                f"Not enough free space for {source.name}: it needs {_megabytes(needed)} "
+                f"(including a {_megabytes(VIDEO_SPACE_RESERVE)} safety margin) but only "
+                f"{_megabytes(free + reclaimable)} can be freed on this disk."
+            )
+        self._host._report_progress(progress, "Removing the previous video to make room")
+        shutil.rmtree(current_dir)
+
+
+def _reclaimable_bytes(root: Path) -> int:
+    """Bytes freed by deleting root; a file with another hard link frees nothing."""
+    if not root.exists():
+        return 0
+    total = 0
+    for path in root.rglob("*"):
+        info = path.lstat()
+        if stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
+            total += info.st_size
+    return total
+
+
+def _megabytes(size: int) -> str:
+    return f"{size / (1024 * 1024):.0f} MB"
 
 
 class RustDeskService:

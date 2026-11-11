@@ -51,6 +51,50 @@ function Get-KioskCachedVideo {
     $null
 }
 
+# Kept free when copying a video, so a full disk does not break Windows.
+$script:KioskVideoSpaceReserve = 64MB
+
+function New-KioskHardLink {
+    param([string] $Path, [string] $Target)
+
+    # Only works on the same NTFS volume; a USB stick (other volume or FAT) returns $false.
+    if (-not ('KioskNative.FileLink' -as [type])) {
+        Add-Type -Namespace KioskNative -Name FileLink -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+public static extern bool CreateHardLink(string lpFileName, string lpExistingFileName, IntPtr lpSecurityAttributes);
+'@
+    }
+    [KioskNative.FileLink]::CreateHardLink([IO.Path]::GetFullPath($Path), [IO.Path]::GetFullPath($Target), [IntPtr]::Zero)
+}
+
+function Get-KioskFreeBytes {
+    param([string] $Path)
+    ([IO.DriveInfo]::new([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path)))).AvailableFreeSpace
+}
+
+function Clear-KioskVideoSpace {
+    param([string] $Source, [string] $Next, [string] $Current)
+
+    # Fail before copying, not halfway; drop the old video only if that makes the new one fit.
+    $needed = (Get-Item -LiteralPath $Source).Length + $script:KioskVideoSpaceReserve
+    $free = [int64] (Get-KioskFreeBytes $Next)
+    if ($free -ge $needed) { return }
+    $reclaimable = [int64] 0
+    if (Test-Path -LiteralPath $Current) {
+        # A file with another hard link frees nothing when deleted.
+        foreach ($file in @(Get-ChildItem -LiteralPath $Current -File -Recurse -Force)) {
+            if ([string] $file.LinkType -ne 'HardLink') { $reclaimable += $file.Length }
+        }
+    }
+    if ($free + $reclaimable -lt $needed) {
+        $name = [IO.Path]::GetFileName($Source)
+        throw ("Not enough free space for {0}: it needs {1:N0} MB (including a {2:N0} MB safety margin) but only {3:N0} MB can be freed on this disk." -f
+            $name, ($needed / 1MB), ($script:KioskVideoSpaceReserve / 1MB), (($free + $reclaimable) / 1MB))
+    }
+    Write-KioskProgress "Removing the previous video to make room"
+    Remove-Item -Recurse -Force -LiteralPath $Current
+}
+
 function Install-KioskVideo {
     param([Parameter(Mandatory = $true)][object] $Display)
 
@@ -74,8 +118,13 @@ function Install-KioskVideo {
         }
         $name = [IO.Path]::GetFileName($Display.Url)
         $video = Join-Path $next $name
-        Write-KioskProgress "Copying local video for display $($Display.Number)"
-        Copy-Item -LiteralPath $Display.Url -Destination $video
+        if (New-KioskHardLink $video $Display.Url) {
+            Write-KioskProgress "Using local video for display $($Display.Number) in place (already on this disk)"
+        } else {
+            Clear-KioskVideoSpace $Display.Url $next $current
+            Write-KioskProgress "Copying local video for display $($Display.Number)"
+            Copy-Item -LiteralPath $Display.Url -Destination $video
+        }
     } else {
         $download = Join-Path $next "video-download"
         Write-KioskProgress "Downloading video for display $($Display.Number)"

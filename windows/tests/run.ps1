@@ -312,6 +312,50 @@ try {
     Assert-Equal 'offline video' ((Get-Content -Raw $offlineDisplay.Path).Trim()) 'Local videos must be copied without downloading.'
     Assert-Equal 'offline video' ((Get-Content -Raw $offline).Trim()) 'The original local video must remain untouched.'
     Assert-Equal $true ($offlineDisplay.Path -ne $offline) 'The kiosk must use its own copy so the USB drive can be removed.'
+    Assert-Equal 'HardLink' ([string] (Get-Item -LiteralPath $offline).LinkType) 'A local video on the same disk must be hard-linked, not copied.'
+    Remove-Item -LiteralPath $offline
+    Assert-Equal 'offline video' ((Get-Content -Raw -LiteralPath $offlineDisplay.Path).Trim()) 'The kiosk video must survive deleting the original name.'
+
+    $realHardLink = ${function:New-KioskHardLink}
+    $realFreeBytes = ${function:Get-KioskFreeBytes}
+    function New-KioskHardLink { param([string] $Path, [string] $Target) $false }
+    try {
+        $usb = Join-Path $runtimeRoot 'usb clip.mp4'
+        [IO.File]::WriteAllBytes($usb, [byte[]] (1..8))
+        $usbDisplay = New-KioskDisplayPlan $displays[0] -Type 'video' -Source $usb
+        $usbDisplay.Url = Normalize-VideoSource $usb
+        [void] (Install-KioskVideo $usbDisplay)
+        Assert-Equal 8 (Get-Item -LiteralPath $usbDisplay.Path).Length 'A video on another disk must be copied.'
+        Assert-Equal '' ([string] (Get-Item -LiteralPath $usb).LinkType) 'A copied video must not share the original file.'
+
+        $old = $usbDisplay.Path
+        $tight = Join-Path $runtimeRoot 'tight clip.mp4'
+        [IO.File]::WriteAllBytes($tight, [byte[]] (1..8))
+        function Get-KioskFreeBytes { param([string] $Path) $script:KioskVideoSpaceReserve + 4 }
+        function Copy-Item {
+            param([string] $LiteralPath, [string] $Destination)
+            if (Test-Path -LiteralPath $old) { throw 'The old video must go before the copy starts.' }
+            Microsoft.PowerShell.Management\Copy-Item -LiteralPath $LiteralPath -Destination $Destination
+        }
+        $tightDisplay = New-KioskDisplayPlan $displays[0] -Type 'video' -Source $tight
+        $tightDisplay.Url = Normalize-VideoSource $tight
+        [void] (Install-KioskVideo $tightDisplay)
+        Remove-Item Function:\Copy-Item
+        Assert-Equal 8 (Get-Item -LiteralPath $tightDisplay.Path).Length 'Removing the old video should make room for the new one.'
+
+        $big = Join-Path $runtimeRoot 'big clip.mp4'
+        [IO.File]::WriteAllBytes($big, [byte[]] (1..20))
+        $bigDisplay = New-KioskDisplayPlan $displays[0] -Type 'video' -Source $big
+        $bigDisplay.Url = Normalize-VideoSource $big
+        $refusal = $null
+        try { [void] (Install-KioskVideo $bigDisplay) } catch { $refusal = $_.Exception.Message }
+        Assert-Match 'Not enough free space' $refusal 'A video that cannot fit must stop before copying.'
+        Assert-Equal 8 (Get-Item -LiteralPath $tightDisplay.Path).Length 'The running kiosk must keep its video when the new one cannot fit.'
+    } finally {
+        ${function:New-KioskHardLink} = $realHardLink
+        ${function:Get-KioskFreeBytes} = $realFreeBytes
+        Remove-Item Function:\Copy-Item -ErrorAction SilentlyContinue
+    }
 
     $twoVideos.WindowsPassword = 'not-for-settings'
     $twoVideos.RustDeskPassword = 'also-not-for-settings'
