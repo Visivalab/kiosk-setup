@@ -101,6 +101,19 @@ VLC_OPTIONS = (
 )
 _VLC_ARGS_LINE = f"VLC_ARGS=({' '.join(VLC_OPTIONS)})"
 
+# To check the loop on the real screens without waiting for the whole video:
+#   PI_KIOSK_LOOP_SECONDS=15 bash ~/.config/pi-kiosk/video-kiosk.sh
+# VLC treats the stop time as the end of the file, so a day of loops fits in minutes.
+_LOOP_CHECK = (
+    'if [ -n "${PI_KIOSK_LOOP_SECONDS:-}" ]; then',
+    '  VLC_ARGS+=(--stop-time="$PI_KIOSK_LOOP_SECONDS")',
+    "fi",
+)
+
+# Nobody restarts a kiosk in an exhibition. VLC ends with 0 when a person closes
+# it (or the cleanup stops it) and stays closed; any other end is a crash.
+RESTART_SECONDS = 2
+
 # The Qt window goes through XWayland, and "launch now" from the wizard runs the
 # launcher with WAYLAND_DISPLAY only. Find XWayland's display in that case.
 _FIND_X11_DISPLAY = (
@@ -154,11 +167,13 @@ def launcher_script(vlc: str, video_path: str) -> str:
             f"VIDEO_PATH={shlex.quote(video_path)}",
             f"VLC={shlex.quote(vlc)}",
             _VLC_ARGS_LINE,
+            *_LOOP_CHECK,
             *_FIND_X11_DISPLAY,
             _AUDIO_ROUTE_LINE,
             "# Wait until the sound output exists, or VLC starts silent at boot.",
             'python3 "$AUDIO_ROUTE" >/dev/null 2>&1 || true',
-            '"$VLC" "${VLC_ARGS[@]}" "$VIDEO_PATH"',
+            "# Started again if it crashes; closed by a person, it stays closed.",
+            f'until "$VLC" "${{VLC_ARGS[@]}}" "$VIDEO_PATH"; do sleep {RESTART_SECONDS}; done',
             "",
         ]
     )
@@ -189,6 +204,7 @@ def multi_launcher_script(
         f"VLC={shlex.quote(vlc)}",
         f"AUDIO_DEVICE={shlex.quote(audio_device)}",
         _VLC_ARGS_LINE,
+        *_LOOP_CHECK,
         *_FIND_X11_DISPLAY,
         'STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/pi-kiosk"',
         'mkdir -p "$STATE_DIR"',
@@ -212,18 +228,35 @@ def multi_launcher_script(
         ]
     lines += [
         "start_player() {",
-        '  local output="$1" video="$2" sound="$3" fallback="$4" screen',
-        '  screen="$(screen_number "$output" "$fallback")"',
+        '  local output="$1" video="$2" sound="$3" fallback="$4"',
         '  local run=() extra=(--no-audio)',
         '  if [ "$sound" = "yes" ]; then',
         "    extra=()",
         "    # An empty PULSE_SINK would name no device at all; leave it unset then.",
         '    if [ -n "$sink" ]; then run=(env PULSE_SINK="$sink"); fi',
         "  fi",
-        '  "${run[@]}" "$VLC" "${VLC_ARGS[@]}" --qt-fullscreen-screennumber="$screen" \\',
-        '    "${extra[@]}" "$video" &',
+        "  # One keeper per screen: it starts VLC again if it crashes. Closed by a",
+        "  # person, or stopped with this launcher, VLC stays closed.",
+        "  (",
+        '    player=""',
+        "    stop() {",
+        '      if [ -n "$player" ]; then kill "$player" >/dev/null 2>&1 || true; fi',
+        "      exit 0",
+        "    }",
+        "    trap stop INT TERM",
+        "    while :; do",
+        '      screen="$(screen_number "$output" "$fallback")"',
+        '      "${run[@]}" "$VLC" "${VLC_ARGS[@]}" --qt-fullscreen-screennumber="$screen" \\',
+        '        "${extra[@]}" "$video" &',
+        '      player="$!"',
+        '      echo "$player" >"$STATE_DIR/display-$output.pid"',
+        "      status=0",
+        '      wait "$player" || status="$?"',
+        '      if [ "$status" -eq 0 ]; then break; fi',
+        f"      sleep {RESTART_SECONDS}",
+        "    done",
+        "  ) &",
         '  pids+=("$!")',
-        '  echo "$!" >"$STATE_DIR/display-$output.pid"',
         "}",
     ]
     for number, (output, video_path, audio) in enumerate(players):

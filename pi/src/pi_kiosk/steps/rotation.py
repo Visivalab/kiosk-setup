@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import shlex
+from typing import TYPE_CHECKING, Sequence
 
 from pi_kiosk.choice import Choice
 from pi_kiosk.display import (
@@ -37,6 +38,8 @@ _LABELS = {choice.id: choice.label for choice in ROTATION_CHOICES}
 BEGIN = "# pi-kiosk-setup:rotation-begin"
 END = "# pi-kiosk-setup:rotation-end"
 DEFAULT_OUTPUT = "HDMI-A-1"
+WAIT_TRIES = 60  # x 0.5 s = 30 s
+POLL_SECONDS = "0.5"
 
 
 def transform_for(choice_id: str) -> str:
@@ -68,6 +71,30 @@ def multi_display_command(
     return argv
 
 
+def autostart_block(command: list[str], per_screen: Sequence[list[str]] = ()) -> str:
+    """The rotation as labwc's autostart runs it at login (with sh, top to bottom).
+
+    wlr-randr refuses the whole command when one of its screens is missing, and
+    a TV or projector that shares the Pi's power switch can give a signal after
+    the desktop is up. So the command is retried until every screen is there;
+    after 30 s each screen that is on gets its own rotation. The kiosk launcher
+    comes later in the same file, so it also waits and finds every screen.
+    """
+    lines = [
+        "# Retried while a screen is still off; see CONFIG.md, screen rotation.",
+        "pi_kiosk_tries=0",
+        f"until {shlex.join(command)} >/dev/null 2>&1; do",
+        "  pi_kiosk_tries=$((pi_kiosk_tries + 1))",
+        f'  if [ "$pi_kiosk_tries" -ge {WAIT_TRIES} ]; then',
+        *(f"    {shlex.join(argv)} >/dev/null 2>&1 || true" for argv in per_screen),
+        "    break",
+        "  fi",
+        f"  sleep {POLL_SECONDS}",
+        "done",
+    ]
+    return "\n".join(lines)
+
+
 class RotationStep:
     id = "rotation"
     title = shared_config()["prompts"]["screenRotation"]
@@ -92,13 +119,11 @@ class RotationStep:
             return self._apply_many(host, choice_id, context)
         transform = transform_for(choice_id)
         output = host.detect_wayland_output() or DEFAULT_OUTPUT
-        command = f"wlr-randr --output {output} --transform {transform}"
+        argv = ["wlr-randr", "--output", output, "--transform", transform]
+        command = " ".join(argv)
 
-        self._write_autostart(host, command)
-        live_result = host.run_in_desktop_session(
-            ["wlr-randr", "--output", output, "--transform", transform],
-            check=False,
-        )
+        self._write_autostart(host, autostart_block(argv))
+        live_result = host.run_in_desktop_session(argv, check=False)
         applied_live = getattr(live_result, "returncode", 1) == 0
         if context is not None:
             config = DisplayConfig(
@@ -131,8 +156,11 @@ class RotationStep:
         by_name = {output.name: output for output in detected}
         outputs = [by_name.get(name, WaylandOutput(name=name)) for name in rotations]
         argv = multi_display_command(outputs, rotations)
-        command = " ".join(argv)
-        self._write_autostart(host, command)
+        per_screen = [
+            ["wlr-randr", "--output", name, "--transform", transform_for(choice)]
+            for name, choice in rotations.items()
+        ]
+        self._write_autostart(host, autostart_block(argv, per_screen))
         live_result = host.run_in_desktop_session(argv, check=False)
         applied_live = getattr(live_result, "returncode", 1) == 0
         configs = [
@@ -155,13 +183,13 @@ class RotationStep:
         )
         return f"Done: screen rotation set on {len(configs)} displays ({details}); {when}"
 
-    def _write_autostart(self, host: RotationHost, command: str) -> None:
+    def _write_autostart(self, host: RotationHost, block: str) -> None:
         path = f"{host.home()}/.config/labwc/autostart"
         host.mkdir(f"{host.home()}/.config/labwc")
         updated = upsert_marked_block(
             read_or_empty(host, path),
             BEGIN,
             END,
-            command,
+            block,
         )
         host.write_file(path, updated)

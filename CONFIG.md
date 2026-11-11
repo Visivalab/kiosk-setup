@@ -94,12 +94,21 @@ It is enclosed by these markers:
 
 ```text
 # pi-kiosk-setup:rotation-begin
-wlr-randr --output HDMI-A-1 --transform 270
+# Retried while a screen is still off; see CONFIG.md, screen rotation.
+pi_kiosk_tries=0
+until wlr-randr --output HDMI-A-1 --transform 270 >/dev/null 2>&1; do
+  pi_kiosk_tries=$((pi_kiosk_tries + 1))
+  if [ "$pi_kiosk_tries" -ge 60 ]; then
+    break
+  fi
+  sleep 0.5
+done
 # pi-kiosk-setup:rotation-end
 ```
 
 The output name and transform in the real file depend on the detected display
-and the answer selected in the wizard.
+and the answer selected in the wizard. The loop around the command is
+explained in "What if a screen is still off when the Pi starts?".
 
 ### Which rotation values are used?
 
@@ -121,8 +130,8 @@ back to `HDMI-A-1`.
 
 ### What happens with two screens?
 
-Rotation is asked once per screen and written as one command that also places
-the screens side by side, for example:
+Rotation is asked once per screen and written as one command (inside the same
+retry loop) that also places the screens side by side, for example:
 
 ```text
 wlr-randr --output HDMI-A-1 --transform 270 --pos 0,0 --output HDMI-A-2 --transform normal --pos 1080,0
@@ -132,10 +141,28 @@ On a Raspberry Pi the output names follow the physical HDMI ports
 (`HDMI-A-1` is HDMI0, next to the power input), so they do not swap after a
 reboot.
 
+### What if a screen is still off when the Pi starts?
+
+`wlr-randr` refuses the whole command when one of the screens it names is
+missing, so a TV or projector that gives a signal after the desktop is up
+(typical when everything shares one power switch) used to leave every screen
+unrotated, and both videos on the screen that was on. The block therefore
+retries the command every half second for up to 30 seconds. labwc runs
+autostart with `sh` from top to bottom and the kiosk line comes after this
+block, so the videos also wait until every screen is there.
+
+If a screen is still missing after 30 seconds, each screen that is on gets its
+own rotation (two screens add one `wlr-randr --output <name> --transform
+<value>` line per screen before the `break`) and the kiosk starts anyway.
+
+This covers the start only. A screen that is unplugged or loses its signal
+while the kiosk runs comes back without its rotation, and its video can stay
+on the other screen, until the next login or reboot.
+
 ### When does rotation take effect?
 
 The installer attempts to apply it immediately in the active Wayland session.
-The command in labwc autostart applies it again on every future graphical login.
+The block in labwc autostart applies it again on every future graphical login.
 
 ## Step 2: touchscreen mapping
 
@@ -333,9 +360,16 @@ autostart.
 
 ### Will the kiosk restart automatically if Chromium or VLC exits?
 
-No. labwc starts the launcher once per graphical login. If the foreground kiosk
-process exits, it is not supervised or restarted by systemd. Logging in again or
-rebooting starts it again.
+Chromium: no. labwc starts the launcher once per graphical login. If the
+foreground kiosk process exits, it is not supervised or restarted by systemd.
+Logging in again or rebooting starts it again.
+
+VLC: only after a crash. The video launcher starts a VLC again two seconds
+after it ends with an error, on its own screen and with the same sound
+setting; with two screens the other one keeps playing. A VLC closed by a
+person (Ctrl+Q, Alt+F4) ends without an error and stays closed, so the desktop
+can still be reached with a keyboard. A VLC that hangs without ending is not
+detected.
 
 ## Step 7A: webapp kiosk
 
@@ -579,8 +613,9 @@ The launcher runs the full `vlc` with its Qt window, not `cvlc`, whose own
 Wayland output crashes on a Pi 5. The options are in `VLC_ARGS`:
 
 ```text
---fullscreen --repeat --no-video-title-show --no-osd --no-qt-fs-controller
---mouse-hide-timeout=0 --no-mouse-events --no-qt-privacy-ask --qt-continue=0
+--no-one-instance --fullscreen --repeat --no-video-title-show --no-osd
+--no-qt-fs-controller --mouse-hide-timeout=0 --no-mouse-events
+--no-qt-privacy-ask --qt-continue=0
 ```
 
 Fullscreen, looping, no title, controls or cursor over the video.
@@ -589,6 +624,34 @@ fullscreen; the keyboard stays available. The last two skip VLC's first-run
 privacy question and its "continue where you left off?" prompt. VLC refuses to
 start on an unknown option, so all of these exist in VLC 3.0 on any Linux
 build.
+
+### What happens when the video reaches its end?
+
+VLC plays it again (`--repeat`): it lets the last frames play out, ends the
+playback and opens the same file again. This is not frame-exact, so expect a
+short hold at the loop. Where that matters, end the video on a still or a
+fade: the hold is then invisible.
+
+With two screens each VLC loops on its own, so the two videos drift apart a
+little at every loop and the difference adds up over a day. `--input-repeat`
+(a jump back to the start without reopening the file) was considered and
+dropped: it does not keep the screens in step either.
+
+### How do I check the loop without waiting for the whole video?
+
+Close the running videos (Ctrl+Q on each) and start the launcher with a
+loop length in seconds:
+
+```bash
+PI_KIOSK_LOOP_SECONDS=15 bash ~/.config/pi-kiosk/video-kiosk.sh
+```
+
+Each VLC then gets `--stop-time=15`. VLC treats the stop time as the end of
+the file, so it loops the first 15 seconds through the same code as the real
+loop, on the real screens, with the rotation and the sound. Left running for
+an hour that is 240 loops: several days of an exhibition for a ten-minute
+video. Watch that the picture and the sound come back at every loop on both
+screens. A normal start (login, reboot) plays the whole video.
 
 ### How does each video find its screen?
 
