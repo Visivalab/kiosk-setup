@@ -42,6 +42,14 @@ def display_title(number: int, output: WaylandOutput) -> str:
     return label[0].upper() + label[1:]
 
 
+def parse_labwc_version(text: str) -> tuple[int, int, int] | None:
+    """`labwc --version` prints "labwc 0.8.1 (+xwayland ...)"; None if it is not that."""
+    match = re.search(r"labwc\s+v?(\d+)\.(\d+)(?:\.(\d+))?", text)
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2)), int(match.group(3) or 0)
+
+
 def parse_wlr_randr(stdout: str) -> list[WaylandOutput]:
     """Enabled outputs from plain `wlr-randr` text, in the order it lists them."""
     outputs: list[WaylandOutput] = []

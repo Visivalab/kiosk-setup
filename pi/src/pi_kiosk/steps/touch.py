@@ -11,7 +11,7 @@ from pi_kiosk.display import (
     choice_id_for_transform,
     display_title,
 )
-from pi_kiosk.files import normalize_labwc_rc_xml, read_or_empty
+from pi_kiosk.files import read_or_empty, upsert_labwc_rc_block
 from pi_kiosk.host import TouchHost
 from pi_kiosk.steps.rotation import BEGIN as ROTATION_BEGIN
 from pi_kiosk.steps.rotation import END as ROTATION_END
@@ -23,8 +23,6 @@ if TYPE_CHECKING:
 TOUCH_DISPLAY_PROMPT = "Which display has the touchscreen?"
 BEGIN = "<!-- pi-kiosk-setup:touch-begin -->"
 END = "<!-- pi-kiosk-setup:touch-end -->"
-_RC_XML_HEADER = '<?xml version="1.0"?>\n<labwc_config>\n'
-_RC_XML_FOOTER = "</labwc_config>\n"
 _TRANSFORM_LABELS = {
     "normal": "no rotation",
     "90": "counterclockwise rotation",
@@ -174,22 +172,4 @@ def touch_block(output: str, matrix: str | None) -> str:
 
 
 def upsert_touch_block(original: str, *, output: str, matrix: str | None) -> str:
-    original = normalize_labwc_rc_xml(original)
-    block = f"{BEGIN}\n{touch_block(output, matrix)}\n{END}"
-    if not original.strip():
-        return f"{_RC_XML_HEADER}{block}\n{_RC_XML_FOOTER}"
-    if BEGIN in original and END in original:
-        pre, rest = original.split(BEGIN, 1)
-        _, post = rest.split(END, 1)
-        if post.startswith("\n"):
-            post = post[1:]
-        return f"{pre}{block}\n{post}"
-    closing = "</labwc_config>"
-    if closing in original:
-        before, after = original.rsplit(closing, 1)
-        if before and not before.endswith("\n"):
-            before += "\n"
-        return f"{before}{block}\n{closing}{after}"
-    if original and not original.endswith("\n"):
-        original += "\n"
-    return f"{original}{block}\n"
+    return upsert_labwc_rc_block(original, BEGIN, END, touch_block(output, matrix))

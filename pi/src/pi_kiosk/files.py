@@ -37,3 +37,30 @@ def normalize_labwc_rc_xml(original: str) -> str:
         count=1,
     )
     return self_closing
+
+
+_RC_XML_HEADER = '<?xml version="1.0"?>\n<labwc_config>\n'
+_RC_XML_FOOTER = "</labwc_config>\n"
+
+
+def upsert_labwc_rc_block(original: str, begin: str, end: str, body: str) -> str:
+    """Insert or replace a tagged block inside labwc's rc.xml, creating the file if empty."""
+    original = normalize_labwc_rc_xml(original)
+    block = f"{begin}\n{body}\n{end}"
+    if not original.strip():
+        return f"{_RC_XML_HEADER}{block}\n{_RC_XML_FOOTER}"
+    if begin in original and end in original:
+        pre, rest = original.split(begin, 1)
+        _, post = rest.split(end, 1)
+        if post.startswith("\n"):
+            post = post[1:]
+        return f"{pre}{block}\n{post}"
+    closing = "</labwc_config>"
+    if closing in original:
+        before, after = original.rsplit(closing, 1)
+        if before and not before.endswith("\n"):
+            before += "\n"
+        return f"{before}{block}\n{closing}{after}"
+    if original and not original.endswith("\n"):
+        original += "\n"
+    return f"{original}{block}\n"
