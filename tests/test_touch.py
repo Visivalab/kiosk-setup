@@ -103,6 +103,19 @@ class TouchStepTests(unittest.TestCase):
         )
 
 
+    def test_upside_down_rotation_flips_touch_and_reads_back_its_choice(self):
+        host = FakeHost(touchscreen=True)
+        RotationStep().apply(host, "upside-down")
+        context = WizardContext(host=host, ui=FakeUI())
+
+        report = TouchStep().apply(host, context=context)
+
+        content = host.files["/home/pi/.config/labwc/rc.xml"]
+        self.assertIn("<calibrationMatrix>-1 0 1 0 -1 1</calibrationMatrix>", content)
+        self.assertIn("180", report)
+        self.assertEqual(context.state["display_config"].choice_id, "upside-down")
+
+
 class UpsertTouchBlockTests(unittest.TestCase):
     def test_creates_minimal_rc_xml_when_missing(self):
         content = upsert_touch_block("", output="DSI-1", matrix="0 -1 1 1 0 0")

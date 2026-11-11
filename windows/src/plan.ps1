@@ -1,4 +1,4 @@
-$script:KioskRotations = @("none", "clockwise", "counterclockwise")
+$script:KioskRotations = @("none", "clockwise", "counterclockwise", "upside-down")
 $script:KioskProjectTypes = @("webapp", "video")
 $script:KioskFinalActions = @("launch", "reboot", "nothing")
 $script:KioskWebAppPort = 8080

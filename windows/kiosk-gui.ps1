@@ -273,11 +273,7 @@ function New-KioskGuiVideoSource {
 function New-KioskGuiRotation {
     $rotation = [Windows.Forms.ComboBox]::new()
     $rotation.DropDownStyle = "DropDownList"
-    [void] $rotation.Items.AddRange(@(
-        $script:SharedConfig.choices.rotation.none,
-        $script:SharedConfig.choices.rotation.clockwise,
-        $script:SharedConfig.choices.rotation.counterclockwise
-    ))
+    [void] $rotation.Items.AddRange(@(Get-KioskRotationLabels))
     $rotation.SelectedIndex = 0
     $rotation
 }
@@ -576,7 +572,7 @@ function Show-KioskGui {
         foreach ($section in $sections) {
             $saved = Get-KioskGuiDisplaySettings $defaults $section.Display
             if (-not $saved) { continue }
-            $rotationIndex = @("none", "clockwise", "counterclockwise").IndexOf(
+            $rotationIndex = $script:KioskRotations.IndexOf(
                 [string] (Get-KioskGuiValue $saved "rotation" "")
             )
             if ($rotationIndex -ge 0) { $section.Rotation.SelectedIndex = $rotationIndex }
@@ -659,7 +655,7 @@ function Show-KioskGui {
         $planned = @($sections | ForEach-Object {
             $type = if ($_.Type) { @("webapp", "video")[$_.Type.SelectedIndex] } else { $_.FixedType }
             New-KioskDisplayPlan $_.Display `
-                -Rotation @("none", "clockwise", "counterclockwise")[$_.Rotation.SelectedIndex] `
+                -Rotation $script:KioskRotations[$_.Rotation.SelectedIndex] `
                 -Type $type -Source $_.Source.Text.Trim()
         })
         $audioNumber = 0

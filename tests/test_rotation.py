@@ -22,17 +22,21 @@ class TransformForRotationTests(unittest.TestCase):
     def test_counterclockwise_maps_to_90(self):
         self.assertEqual(transform_for("counterclockwise"), "90")
 
+    def test_upside_down_maps_to_180(self):
+        self.assertEqual(transform_for("upside-down"), "180")
+
     def test_unknown_choice_is_rejected(self):
         with self.assertRaises(ValueError):
-            transform_for("upside-down")
+            transform_for("sideways")
 
-    def test_selector_offers_the_three_named_options(self):
+    def test_selector_offers_the_four_named_options(self):
         ids = [choice.id for choice in ROTATION_CHOICES]
-        self.assertEqual(ids, ["none", "clockwise", "counterclockwise"])
+        self.assertEqual(ids, ["none", "clockwise", "counterclockwise", "upside-down"])
         labels = [choice.label for choice in ROTATION_CHOICES]
         self.assertIn("No rotation", labels)
         self.assertTrue(any("clockwise" in label.lower() for label in labels))
         self.assertTrue(any("counterclockwise" in label.lower() for label in labels))
+        self.assertTrue(any("180" in label for label in labels))
 
 
 class ApplyRotationTests(unittest.TestCase):

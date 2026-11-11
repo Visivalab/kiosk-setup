@@ -22,7 +22,8 @@
     "rotation": {
       "none": "No rotation",
       "clockwise": "Rotate clockwise (90 deg)",
-      "counterclockwise": "Rotate counterclockwise (90 deg)"
+      "counterclockwise": "Rotate counterclockwise (90 deg)",
+      "upside-down": "Rotate 180 deg (upside down)"
     },
     "project": {
       "webapp": "Webapp",

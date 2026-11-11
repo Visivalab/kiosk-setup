@@ -225,6 +225,23 @@ Assert-Equal $null (Get-KioskRegistrationDisplays) "Without a saved setup there 
 
 Assert-Equal "remote-secret" (Unprotect-KioskGuiSecret (Protect-KioskGuiSecret "remote-secret")) "GUI secrets should round-trip through Windows encryption."
 
+Assert-Equal "none,clockwise,counterclockwise,upside-down" ($script:KioskRotations -join ",") "Windows offers the same four rotations as the Pi."
+$upsideDown = New-TestPlan @(
+    (New-KioskDisplayPlan $displays[0] -Rotation "upside-down" -Type "video" -Source $dropboxOne)
+)
+Assert-Equal $null (Test-KioskPlan $upsideDown) "A display rotated 180 degrees should pass validation."
+Assert-Equal 0 (Get-KioskRotationOrientation "none") "No rotation is DMDO_DEFAULT."
+Assert-Equal 1 (Get-KioskRotationOrientation "clockwise") "Clockwise is DMDO_90."
+Assert-Equal 2 (Get-KioskRotationOrientation "upside-down") "Upside down is DMDO_180."
+Assert-Equal 3 (Get-KioskRotationOrientation "counterclockwise") "Counterclockwise is DMDO_270."
+Assert-Throws { Get-KioskRotationOrientation "sideways" } "Unknown rotations must be rejected."
+& {
+    $script:SharedConfig = Get-KioskSharedConfig
+    $labels = @(Get-KioskRotationLabels)
+    Assert-Equal 4 $labels.Count "Every rotation needs a label in the shared config."
+    Assert-Match "180" $labels[3] "The fourth rotation label should mention 180 degrees."
+}
+
 Initialize-RotationApi
 Assert-Equal 156 ([Runtime.InteropServices.Marshal]::SizeOf([type] [KioskDisplay+DEVMODE])) "The Windows display structure should have the native size."
 
@@ -500,7 +517,7 @@ Assert-Equal 4 $script:secretPrompts.Count 'Both entries should be requested aga
 
     $plan.Register = $false
     Assert-Throws { Install-KioskContent $plan } 'A failed download must still fail when registration is disabled.'
-    Assert-Equal 1 $script:registrationAttempts 'Registration must respect the user's choice.'
+    Assert-Equal 1 $script:registrationAttempts "Registration must respect the user's choice."
 
     $plan.Register = $true
     function Register-KioskTotem { param([switch] $SkipRustDesk) $script:registrationAttempts++; throw 'registration failed' }

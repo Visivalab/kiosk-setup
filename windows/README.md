@@ -56,7 +56,7 @@ windows\cleanup.cmd
 
 The wizard configures:
 
-1. Rotation, per display, applied to every screen in a single display-layout commit
+1. Rotation, per display (none, clockwise 90°, counterclockwise 90°, 180°), applied to every screen in a single display-layout commit
 2. Disabled display blanking and sleep
 3. Windows autologin through native AutoAdminLogon for a passwordless local account, or Microsoft Sysinternals Autologon when the account has a password
 4. RustDesk unattended access

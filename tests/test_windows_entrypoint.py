@@ -174,7 +174,7 @@ class WindowsEntrypointTests(unittest.TestCase):
         self.assertIn("public static void Commit()", script)
         self.assertIn("function Set-KioskRotationPlan", script)
         self.assertLess(
-            script.index("[KioskDisplay]::Rotate($display.DeviceName, $orientations[$display.Rotation], $false)"),
+            script.index("[KioskDisplay]::Rotate($display.DeviceName, (Get-KioskRotationOrientation $display.Rotation), $false)"),
             script.index("[KioskDisplay]::Commit()"),
         )
 

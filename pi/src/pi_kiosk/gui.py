@@ -135,6 +135,7 @@ class DemoChannel:
                 {"id": "none", "label": "No rotation"},
                 {"id": "clockwise", "label": "Rotate clockwise (90 deg)"},
                 {"id": "counterclockwise", "label": "Rotate counterclockwise (90 deg)"},
+                {"id": "upside-down", "label": "Rotate 180 deg (upside down)"},
             ],
             "projects": [{"id": "webapp", "label": "Webapp"}, {"id": "video", "label": "Video"}],
             "webappExample": "screen_1_de/screen_1_de-dist.zip",

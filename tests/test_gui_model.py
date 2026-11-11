@@ -67,7 +67,7 @@ class HelloTests(unittest.TestCase):
         self.assertEqual(hello["audioOutputs"], [{"id": "pulse/hdmi-1", "name": "HDMI 1"}])
         self.assertTrue(hello["touchscreen"])
         self.assertEqual(hello["state"]["displays"][0]["output"], "HDMI-A-1")
-        self.assertEqual([choice["id"] for choice in hello["rotations"]], ["none", "clockwise", "counterclockwise"])
+        self.assertEqual([choice["id"] for choice in hello["rotations"]], ["none", "clockwise", "counterclockwise", "upside-down"])
 
 
 class FormValidationTests(unittest.TestCase):

@@ -108,6 +108,7 @@ and the answer selected in the wizard.
 | No rotation | `normal` |
 | Rotate clockwise | `270` |
 | Rotate counterclockwise | `90` |
+| Rotate 180 (upside down) | `180` |
 
 These transform values follow the output coordinate convention used by
 `wlr-randr`.

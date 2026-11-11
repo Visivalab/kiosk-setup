@@ -57,7 +57,7 @@ tests/                         unittest, FakeHost / FakeUI
 - Add features as a new class in `pi/src/pi_kiosk/steps/` with `id`, `title`, `choices`, `ask()`, `apply()`. Register it in `default_steps()`.
 - Do not put raspi-config or filesystem calls in the wizard. Steps talk to `Host`.
 - Re-runs must be idempotent. User-facing files use `# pi-kiosk-setup:<name>-begin/end` blocks.
-- Rotation names: `none` (0), `clockwise` (90), `counterclockwise` (270).
+- Rotation names: `none` (0), `clockwise` (90), `counterclockwise` (270), `upside-down` (180).
 - Stay on Wayland/labwc. Do not switch the Pi back to X11.
 - Do not commit, deploy, or configure a live Pi unless the user asks.
 - `kiosk.sh` may be piped (`curl … | sudo bash`). Keep the body in `main()` so the script is fully read before stdin is reattached to `/dev/tty`. If `pi/src/pi_kiosk` is missing, it downloads the public GitHub archive.

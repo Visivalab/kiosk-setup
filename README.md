@@ -113,7 +113,7 @@ session relies on `xdg-desktop-portal-wlr` for screen sharing.
 
 ## What the Pi wizard does
 
-1. Screen rotation per screen (no rotation, clockwise 90°, counterclockwise 90°).
+1. Screen rotation per screen (no rotation, clockwise 90°, counterclockwise 90°, 180°).
    With several screens they are placed side by side in one `wlr-randr` call.
 2. Touchscreen mapping to its screen, with the matching calibration
 3. Disable screen blanking / sleep

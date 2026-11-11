@@ -28,6 +28,7 @@ _ROTATION_LABELS = {
     "none": "no rotation",
     "clockwise": "clockwise",
     "counterclockwise": "counterclockwise",
+    "upside-down": "180 degrees (upside down)",
 }
 
 

@@ -22,12 +22,14 @@ ROTATION_CHOICES = (
     Choice("none", _ROTATION_LABELS["none"]),
     Choice("clockwise", _ROTATION_LABELS["clockwise"]),
     Choice("counterclockwise", _ROTATION_LABELS["counterclockwise"]),
+    Choice("upside-down", _ROTATION_LABELS["upside-down"]),
 )
 
 _TRANSFORMS = {
     "none": "normal",
     "clockwise": "270",
     "counterclockwise": "90",
+    "upside-down": "180",
 }
 
 _LABELS = {choice.id: choice.label for choice in ROTATION_CHOICES}

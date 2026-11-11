@@ -11,6 +11,7 @@ _MODE_SIZE = re.compile(r"^(\d+)x(\d+)")
 _CHOICE_IDS_BY_TRANSFORM = {
     "normal": "none",
     "90": "counterclockwise",
+    "180": "upside-down",
     "270": "clockwise",
 }
 

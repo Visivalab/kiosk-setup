@@ -76,14 +76,13 @@ function Install-KioskContent {
 function Read-KioskDisplayPlan {
     param([object] $Display, [bool] $VideoOnly)
 
-    $rotationChoices = $script:SharedConfig.choices.rotation
     $prompt = if ($VideoOnly) {
         "$($script:SharedConfig.prompts.screenRotation) - display $($Display.Number) ($($Display.DeviceName))"
     } else {
         $script:SharedConfig.prompts.screenRotation
     }
-    $rotationIndex = Read-KioskChoice $prompt @($rotationChoices.none, $rotationChoices.clockwise, $rotationChoices.counterclockwise)
-    $rotation = @("none", "clockwise", "counterclockwise")[$rotationIndex]
+    $rotationIndex = Read-KioskChoice $prompt @(Get-KioskRotationLabels)
+    $rotation = $script:KioskRotations[$rotationIndex]
 
     $type = "video"
     if (-not $VideoOnly) {

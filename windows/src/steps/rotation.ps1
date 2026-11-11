@@ -164,15 +164,34 @@ public static class KioskDisplay {
 '@
 }
 
+# DEVMODE dmDisplayOrientation: DMDO_DEFAULT, DMDO_90, DMDO_180, DMDO_270.
+$script:KioskRotationOrientations = @{ "none" = 0; "clockwise" = 1; "upside-down" = 2; "counterclockwise" = 3 }
+$script:KioskRotationDoneLabels = @{
+    "none" = "no rotation"; "clockwise" = "clockwise"; "counterclockwise" = "counterclockwise"; "upside-down" = "180 degrees (upside down)"
+}
+
+function Get-KioskRotationOrientation {
+    param([string] $Rotation)
+    if (-not $script:KioskRotationOrientations.ContainsKey($Rotation)) {
+        throw "Unknown screen rotation: $Rotation"
+    }
+    $script:KioskRotationOrientations[$Rotation]
+}
+
+# Selector labels from the shared config, in $script:KioskRotations order.
+function Get-KioskRotationLabels {
+    $choices = $script:SharedConfig.choices.rotation
+    foreach ($id in $script:KioskRotations) { [string] $choices.$id }
+}
+
 function Set-KioskRotationPlan {
     param([object[]] $Displays)
 
     Initialize-RotationApi
-    $orientations = @{ none = 0; clockwise = 1; counterclockwise = 3 }
-    $labels = @{ none = "no rotation"; clockwise = "clockwise"; counterclockwise = "counterclockwise" }
+    $labels = $script:KioskRotationDoneLabels
 
     foreach ($display in $Displays) {
-        [KioskDisplay]::Rotate($display.DeviceName, $orientations[$display.Rotation], $false)
+        [KioskDisplay]::Rotate($display.DeviceName, (Get-KioskRotationOrientation $display.Rotation), $false)
     }
     [KioskDisplay]::Commit()
     foreach ($display in $Displays) {
