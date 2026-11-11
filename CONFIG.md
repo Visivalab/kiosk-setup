@@ -535,9 +535,12 @@ Each screen gets its own video, downloaded into
 `<home>/.local/share/pi-kiosk/video/<output>/current/`. The single
 `video-kiosk.sh` launcher starts one mpv per screen with
 `--fs-screen-name=<output>` and waits for all of them. Only the screen chosen
-for audio plays sound; the others use `--no-audio`. If the chosen audio output
-is not present when the launcher starts, mpv uses the default output. The
-players start together but are not frame-synchronised.
+for audio plays sound; the others use `--no-audio`. The sound goes to the
+speakers of that same screen (on a Pi, `HDMI-A-1` is the audio card
+`vc4-hdmi-0` and `HDMI-A-2` is `vc4-hdmi-1`), so a projector without speakers
+never takes it. Choose another output only for separate speakers. If the
+output is still not present after the launcher's audio wait (see below), mpv
+uses the default output. The players start together but are not frame-synchronised.
 
 Webapp kiosks remain single-screen, as on Windows.
 
@@ -567,7 +570,7 @@ The launcher starts `mpv` with fullscreen, infinite looping, hidden controls,
 and automatic cursor hiding:
 
 ```text
---fs --loop-file=inf --no-osc --no-osd-bar --cursor-autohide=always
+--fs --loop-file=inf --hwdec="$HWDEC" --no-osc --no-osd-bar --cursor-autohide=always
 ```
 
 Touch-to-mouse emulation is disabled with:
@@ -577,6 +580,42 @@ Touch-to-mouse emulation is disabled with:
 ```
 
 Keyboard and mouse input are otherwise left available.
+
+### Why can the video take a few seconds to start after boot?
+
+At boot, labwc runs the launcher before PipeWire has found the HDMI audio
+outputs. mpv opens its audio output only once, so a player started that early
+stays silent until the next login, even though it worked when launched from
+the wizard. Before starting a player with sound, the launcher waits until
+`pactl list short sinks` shows the chosen output (or any output, when the
+default is used), for at most 20 seconds. After that it starts anyway, so a
+screen without speakers still plays its video. When every screen is muted
+there is no wait.
+
+### Does the video use hardware decoding?
+
+Yes. mpv decodes in software unless told otherwise, and a Pi's CPU cannot keep
+up with high-bitrate video, let alone two screens at once. The launcher sets
+`HWDEC` at the top and passes `--hwdec="$HWDEC"`:
+
+| Platform | `HWDEC` | Why |
+|---|---|---|
+| Raspberry Pi | `drm-copy` | Reaches the Pi's HEVC (H.265) hardware decoder through FFmpeg's DRM hwaccel, and copies frames back so any mpv video output can show them. |
+| Ubuntu/Debian desktop | `auto-safe` | mpv picks VA-API, NVDEC, etc. when available. |
+
+A file the hardware cannot decode still plays, in software. On a Pi this
+matters for H.264: a Pi 5 has no H.264 decoder at all, and a Pi 4 decodes only
+one 1080p stream. For smooth playback on a Pi, encode the videos as HEVC at the
+screen's resolution (1080p for a 1080p screen), for example:
+
+```bash
+ffmpeg -i input.mp4 -vf "scale=1920:1080:force_original_aspect_ratio=decrease" \
+  -c:v libx265 -preset medium -crf 23 -tag:v hvc1 -c:a aac -b:a 160k output.mp4
+```
+
+To try another decoder, edit `HWDEC=` in
+`<home>/.config/pi-kiosk/video-kiosk.sh` (for example `drm` or `no`) and log in
+again. Running the wizard again rewrites the launcher.
 
 ### Does `pi-kiosk` install mpv?
 

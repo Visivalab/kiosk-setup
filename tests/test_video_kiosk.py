@@ -286,6 +286,28 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
         self.assertNotIn("--input-cursor=no", script)
         self.assertNotIn("--input-vo-keyboard=no", script)
 
+    def _single_launcher(self, host: FakeHost) -> str:
+        VideoKioskStep().apply(
+            host,
+            VideoSource(
+                shared_url="https://www.dropbox.com/s/example/demo.mp4?dl=0",
+                download_url="https://www.dropbox.com/s/example/demo.mp4?dl=1",
+            ),
+        )
+        return host.files[launcher_path(host.home())]
+
+    def test_pi_decodes_hevc_with_the_hardware_decoder(self):
+        script = self._single_launcher(FakeHost())
+
+        self.assertIn("HWDEC=drm-copy", script)
+        self.assertIn('--hwdec="$HWDEC"', script)
+
+    def test_desktop_linux_lets_mpv_pick_a_safe_hardware_decoder(self):
+        script = self._single_launcher(FakeHost(platform="linux-desktop"))
+
+        self.assertIn("HWDEC=auto-safe", script)
+        self.assertIn('--hwdec="$HWDEC"', script)
+
     def test_switching_from_webapp_replaces_the_active_kiosk_launcher(self):
         host = FakeHost()
 

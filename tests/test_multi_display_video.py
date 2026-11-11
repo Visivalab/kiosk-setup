@@ -1,3 +1,4 @@
+from dataclasses import replace
 import unittest
 
 from tests.fake_ui import FakeUI
@@ -121,6 +122,28 @@ class ApplyMultiDisplayVideoTests(unittest.TestCase):
             audio_device_name=SPEAKERS.name,
         )
 
+    def test_sound_goes_to_the_speakers_of_the_screen_that_plays_it(self):
+        # Tester setup: a TV with speakers and a projector. Left on the default
+        # output, PipeWire sent the sound to the projector and nothing was heard.
+        tv = AudioOutput("pulse/hdmi0", "HDMI - vc4-hdmi-0", card="vc4-hdmi-0")
+        projector = AudioOutput("pulse/hdmi1", "HDMI - vc4-hdmi-1", card="vc4-hdmi-1")
+        host = FakeHost(wayland_outputs=TWO_OUTPUTS, audio_outputs=[tv, projector])
+        request = replace(self._request(), audio_device="", audio_device_name="")
+
+        VideoKioskStep().apply(host, request, WizardContext(host=host, ui=FakeUI()))
+
+        script = host.files[launcher_path(host.home())]
+        self.assertIn("AUDIO_DEVICE=pulse/hdmi0", script)
+
+    def test_a_chosen_output_wins_over_the_screen_speakers(self):
+        tv = AudioOutput("pulse/hdmi0", "HDMI - vc4-hdmi-0", card="vc4-hdmi-0")
+        host = FakeHost(wayland_outputs=TWO_OUTPUTS, audio_outputs=[tv, SPEAKERS])
+
+        VideoKioskStep().apply(host, self._request(), WizardContext(host=host, ui=FakeUI()))
+
+        script = host.files[launcher_path(host.home())]
+        self.assertIn(f"AUDIO_DEVICE={SPEAKERS.id}", script)
+
     def test_deploys_each_video_into_its_own_display_folder(self):
         host = FakeHost(wayland_outputs=TWO_OUTPUTS)
 
@@ -147,6 +170,15 @@ class ApplyMultiDisplayVideoTests(unittest.TestCase):
         self.assertIn("AUDIO_DEVICE=pulse/alsa_output.hdmi-1", script)
         self.assertIn("display-$output.pid", script)
         self.assertEqual(script.splitlines()[-1], "wait")
+
+    def test_every_player_uses_the_hardware_decoder_on_a_pi(self):
+        host = FakeHost(wayland_outputs=TWO_OUTPUTS)
+
+        VideoKioskStep().apply(host, self._request(), WizardContext(host=host, ui=FakeUI()))
+
+        script = host.files[launcher_path(host.home())]
+        self.assertIn("HWDEC=drm-copy", script)
+        self.assertIn('--hwdec="$HWDEC"', script)
 
     def test_autostart_runs_the_shared_launcher_once(self):
         host = FakeHost(wayland_outputs=TWO_OUTPUTS)

@@ -53,6 +53,7 @@ class AudioOutput:
 
     id: str
     name: str
+    card: str = ""
 
 
 @dataclass(frozen=True)
@@ -162,6 +163,8 @@ class WebAppHost(UserHost, FileHost, PackageHost, WebAppLaunchHost, Protocol):
 
 
 class VideoHost(UserHost, FileHost, PackageHost, VideoLaunchHost, Protocol):
+    def platform(self) -> str | None: ...
+
     def deploy_video(
         self,
         source: VideoSource,
