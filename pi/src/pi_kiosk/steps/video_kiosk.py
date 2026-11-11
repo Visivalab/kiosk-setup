@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from pi_kiosk.audio import screen_audio_output
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import DesktopSessionUnavailable, UserFacingError
 from pi_kiosk.host import VideoHost, VideoSource
@@ -95,31 +94,6 @@ def hwdec_for(platform: str | None) -> str:
     return "drm-copy" if platform == "raspberry-pi" else "auto-safe"
 
 
-# At boot labwc runs the launcher before PipeWire has published the HDMI
-# outputs. mpv opens its audio output once, so a player started too early stays
-# silent until the next login. Wait a bounded time, then start regardless so a
-# screen without speakers still shows its video.
-AUDIO_WAIT_TRIES = 40  # x 0.5 s
-_WAIT_FOR_AUDIO = (
-    "# Waits until PipeWire lists the audio output (any output when none is given).",
-    "wait_for_audio() {",
-    '  local want="${1:-}" sinks tries=0',
-    "  command -v pactl >/dev/null 2>&1 || return 0",
-    f'  while [ "$tries" -lt {AUDIO_WAIT_TRIES} ]; do',
-    '    sinks="$(LC_ALL=C pactl list short sinks 2>/dev/null | cut -f2 | grep -vxF auto_null || true)"',
-    '    if [ -n "$want" ]; then',
-    '      if grep -qxF "$want" <<<"$sinks"; then return 0; fi',
-    '    elif [ -n "$sinks" ]; then',
-    "      return 0",
-    "    fi",
-    "    tries=$((tries + 1))",
-    "    sleep 0.5",
-    "  done",
-    "  return 0",
-    "}",
-)
-
-
 def launcher_path(home: str) -> str:
     return f"{home}/.config/pi-kiosk/video-kiosk.sh"
 
@@ -132,8 +106,6 @@ def launcher_script(mpv: str, video_path: str, hwdec: str = "auto-safe") -> str:
             f"VIDEO_PATH={shlex.quote(video_path)}",
             f"MPV={shlex.quote(mpv)}",
             f"HWDEC={shlex.quote(hwdec)}",
-            *_WAIT_FOR_AUDIO,
-            "wait_for_audio",
             f'"$MPV" {_MPV_ARGS} "$VIDEO_PATH"',
             "",
         ]
@@ -175,11 +147,6 @@ def multi_launcher_script(
         "}",
         "trap cleanup EXIT",
         "trap 'exit 0' INT TERM",
-        *_WAIT_FOR_AUDIO,
-    ]
-    if any(audio for _, _, audio in players):
-        lines.append('wait_for_audio "${AUDIO_DEVICE#pulse/}"')
-    lines += [
         "audio_args=()",
         'if [ -n "$AUDIO_DEVICE" ]; then',
         '  sink="${AUDIO_DEVICE#pulse/}"',
@@ -315,17 +282,9 @@ class VideoKioskStep:
             (screen.output, deployment.video_path, screen.audio)
             for screen, deployment in zip(request.screens, deployments)
         ]
-        audio = next((screen.output for screen in request.screens if screen.audio), None)
-        audio_device, audio_device_name = request.audio_device, request.audio_device_name
-        if audio and not audio_device:
-            # Left to PipeWire, the sound can go to a screen without speakers
-            # (a projector). Send it to the chosen screen's own HDMI instead.
-            speakers = screen_audio_output(audio, host.audio_outputs())
-            if speakers is not None:
-                audio_device, audio_device_name = speakers.id, f"the speakers of {audio}"
         host.write_file(
             launcher_path(home),
-            multi_launcher_script(mpv, players, audio_device, hwdec_for(host.platform())),
+            multi_launcher_script(mpv, players, request.audio_device, hwdec_for(host.platform())),
         )
         install_kiosk_autostart(host, launcher_path(home))
         if context is not None:
@@ -337,7 +296,8 @@ class VideoKioskStep:
             )
             context.state[VIDEO_SCREENS_KEY] = list(zip(request.screens, deployments))
 
-        output = audio_device_name or "the default output"
+        audio = next((screen.output for screen in request.screens if screen.audio), None)
+        output = request.audio_device_name or "the default output"
         audio_report = (
             f"Audio plays from {audio} through {output}; the other screens are muted."
             if audio

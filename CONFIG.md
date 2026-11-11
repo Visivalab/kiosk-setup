@@ -535,12 +535,9 @@ Each screen gets its own video, downloaded into
 `<home>/.local/share/pi-kiosk/video/<output>/current/`. The single
 `video-kiosk.sh` launcher starts one mpv per screen with
 `--fs-screen-name=<output>` and waits for all of them. Only the screen chosen
-for audio plays sound; the others use `--no-audio`. The sound goes to the
-speakers of that same screen (on a Pi, `HDMI-A-1` is the audio card
-`vc4-hdmi-0` and `HDMI-A-2` is `vc4-hdmi-1`), so a projector without speakers
-never takes it. Choose another output only for separate speakers. If the
-output is still not present after the launcher's audio wait (see below), mpv
-uses the default output. The players start together but are not frame-synchronised.
+for audio plays sound; the others use `--no-audio`. If the chosen audio output
+is not present when the launcher starts, mpv uses the default output. The
+players start together but are not frame-synchronised.
 
 Webapp kiosks remain single-screen, as on Windows.
 
@@ -580,17 +577,6 @@ Touch-to-mouse emulation is disabled with:
 ```
 
 Keyboard and mouse input are otherwise left available.
-
-### Why can the video take a few seconds to start after boot?
-
-At boot, labwc runs the launcher before PipeWire has found the HDMI audio
-outputs. mpv opens its audio output only once, so a player started that early
-stays silent until the next login, even though it worked when launched from
-the wizard. Before starting a player with sound, the launcher waits until
-`pactl list short sinks` shows the chosen output (or any output, when the
-default is used), for at most 20 seconds. After that it starts anyway, so a
-screen without speakers still plays its video. When every screen is muted
-there is no wait.
 
 ### Does the video use hardware decoding?
 

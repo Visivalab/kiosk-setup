@@ -53,7 +53,6 @@ class AudioOutput:
 
     id: str
     name: str
-    card: str = ""
 
 
 @dataclass(frozen=True)
