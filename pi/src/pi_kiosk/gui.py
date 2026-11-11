@@ -129,7 +129,7 @@ class DemoChannel:
                 {"id": "pulse/hdmi-0", "name": "Built-in Audio Digital Stereo (HDMI) - vc4-hdmi-0"},
                 {"id": "pulse/hdmi-1", "name": "Built-in Audio Digital Stereo (HDMI) - vc4-hdmi-1"},
             ],
-            "defaultAudioLabel": "Default output - whatever is available when it plays",
+            "defaultAudioLabel": "Speakers of the screen that plays the audio",
             "touchscreen": True,
             "rotations": [
                 {"id": "none", "label": "No rotation"},
@@ -401,8 +401,8 @@ def run_window(channel) -> int:
                 hint.grid_remove()
         audio_note.configure(
             text=(
-                "Only one screen plays sound; the others are muted. Choose the output when the "
-                "screens have their own speakers."
+                "Only one screen plays sound, through its own speakers; the others are muted. "
+                "Choose another output only for separate speakers."
                 if multiple
                 else "The webapp plays its own sound through the output available when it plays."
                 if webapp

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from pi_kiosk.host import AudioOutput
 
 
@@ -27,5 +29,18 @@ def parse_pactl_sinks(stdout: str) -> list[AudioOutput]:
         label = sink.get("description") or name
         if sink.get("card"):
             label = f"{label} - {sink['card']}"
-        outputs.append(AudioOutput(id=f"pulse/{name}", name=label))
+        outputs.append(AudioOutput(id=f"pulse/{name}", name=label, card=sink.get("card", "")))
     return outputs
+
+
+def screen_audio_output(screen: str, outputs: list[AudioOutput]) -> AudioOutput | None:
+    """The sound output of a Pi screen's own HDMI port (its built-in speakers).
+
+    On a Pi the screen HDMI-A-1 is the ALSA card vc4-hdmi-0, HDMI-A-2 is vc4-hdmi-1.
+    """
+    match = re.fullmatch(r"HDMI-A-(\d+)", screen)
+    if not match:
+        return None
+    port = int(match.group(1)) - 1
+    cards = {f"vc4-hdmi-{port}", f"vc4hdmi{port}"}
+    return next((output for output in outputs if output.card in cards), None)

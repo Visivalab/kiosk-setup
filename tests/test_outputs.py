@@ -1,6 +1,6 @@
 import unittest
 
-from pi_kiosk.audio import parse_pactl_sinks
+from pi_kiosk.audio import parse_pactl_sinks, screen_audio_output
 from pi_kiosk.display import parse_wlr_randr
 from pi_kiosk.host import AudioOutput, WaylandOutput
 
@@ -78,10 +78,12 @@ class ParsePactlSinksTests(unittest.TestCase):
                 AudioOutput(
                     id="pulse/alsa_output.platform-fef00700.hdmi.hdmi-stereo",
                     name="Built-in Audio Digital Stereo (HDMI) - vc4-hdmi-0",
+                    card="vc4-hdmi-0",
                 ),
                 AudioOutput(
                     id="pulse/alsa_output.platform-fef05700.hdmi.hdmi-stereo",
                     name="Built-in Audio Digital Stereo (HDMI) - vc4-hdmi-1",
+                    card="vc4-hdmi-1",
                 ),
                 AudioOutput(id="pulse/bluez_output.00_11_22", name="Speaker"),
             ],
@@ -90,3 +92,18 @@ class ParsePactlSinksTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScreenAudioOutputTests(unittest.TestCase):
+    HDMI_0 = AudioOutput("pulse/hdmi0", "HDMI (HDMI) - vc4-hdmi-0", card="vc4-hdmi-0")
+    HDMI_1 = AudioOutput("pulse/hdmi1", "HDMI (HDMI) - vc4-hdmi-1", card="vc4-hdmi-1")
+
+    def test_each_pi_hdmi_port_has_its_own_audio_output(self):
+        outputs = [self.HDMI_0, self.HDMI_1]
+
+        self.assertEqual(screen_audio_output("HDMI-A-1", outputs), self.HDMI_0)
+        self.assertEqual(screen_audio_output("HDMI-A-2", outputs), self.HDMI_1)
+
+    def test_no_match_when_the_screen_has_no_audio_output(self):
+        self.assertIsNone(screen_audio_output("HDMI-A-2", [self.HDMI_0]))
+        self.assertIsNone(screen_audio_output("DSI-1", [self.HDMI_0, self.HDMI_1]))

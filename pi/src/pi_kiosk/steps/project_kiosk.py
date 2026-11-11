@@ -21,7 +21,7 @@ WEBAPP = "webapp"
 VIDEO = "video"
 AUDIO_DISPLAY_PROMPT = "Which video plays the audio? The other screens are muted."
 AUDIO_OUTPUT_PROMPT = "Audio output"
-DEFAULT_AUDIO_OUTPUT_LABEL = "Default output - whatever is available when it plays"
+DEFAULT_AUDIO_OUTPUT_LABEL = "Speakers of the screen that plays the audio"
 PROJECT_TYPE_CHOICES = [
     Choice(id=WEBAPP, label=_SHARED_CONFIG["choices"]["project"][WEBAPP]),
     Choice(id=VIDEO, label=_SHARED_CONFIG["choices"]["project"][VIDEO]),
