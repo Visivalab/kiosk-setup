@@ -86,6 +86,7 @@ def normalize_source(value: str) -> VideoSource:
 # Wayland output crashes on a Pi 5. VLC stops on an unknown option, so every
 # one below exists in VLC 3.0 on any Linux build.
 VLC_OPTIONS = (
+    "--no-one-instance",
     "--fullscreen",
     "--repeat",
     "--no-video-title-show",

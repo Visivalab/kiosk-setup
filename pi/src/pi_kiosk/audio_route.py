@@ -60,6 +60,8 @@ def parse_pw_dump(text: str) -> list[dict] | None:
         props = (item.get("info") or {}).get("props") or {}
         if props.get("media.class") != "Audio/Sink" or not props.get("node.name"):
             continue
+        if props["node.name"] == "auto_null":
+            continue
         sinks.append(
             {
                 "id": item.get("id"),
@@ -97,7 +99,7 @@ def list_sinks(run=None) -> list[dict]:
     dump = run(["pw-dump"])
     if dump is not None:
         sinks = parse_pw_dump(dump)
-        if sinks is not None:
+        if sinks:
             return sinks
     listing = run(["pactl", "list", "sinks"])
     return parse_pactl_sinks(listing) if listing is not None else []

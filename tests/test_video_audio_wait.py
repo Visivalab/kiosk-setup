@@ -62,6 +62,7 @@ class _LauncherHarness(unittest.TestCase):
             ("wpctl", FAKE_WPCTL),
             ("vlc", FAKE_VLC),
             ("xrandr", FAKE_XRANDR),
+            ("pactl", "#!/usr/bin/env bash\nexit 1\n"),
         ):
             path = bin_dir / name
             path.write_text(body)
@@ -160,7 +161,7 @@ class LauncherSendsSoundToTheSpeakersTests(_LauncherHarness):
         self.assertEqual([player["sink"] for player in players], ["unset", "unset"])
 
     def test_single_screen_starts_vlc_once_an_audio_output_exists(self):
-        self.sinks((3, TV))
+        self.sinks((1, ("62", "auto_null", "")), (3, TV))
 
         [player] = self.run_launcher(launcher_script(self.vlc, "/videos/a.mp4"))
 
@@ -179,6 +180,16 @@ class LauncherPlacesEachVideoTests(_LauncherHarness):
     def screen_of(self, players: list[dict], video: str) -> str:
         args = self.by_video(players, video)["args"]
         return args.split("--qt-fullscreen-screennumber=", 1)[1].split()[0]
+
+    def test_every_launch_overrides_the_users_single_instance_preference(self):
+        for script in (launcher_script(self.vlc, "/videos/a.mp4"), self.two_screens()):
+            with self.subTest(script=script):
+                (self.dir / "vlc.log").unlink(missing_ok=True)
+
+                players = self.run_launcher(script)
+
+                for player in players:
+                    self.assertIn("--no-one-instance", player["args"].split())
 
     def test_screens_are_numbered_in_xwayland_order(self):
         self.xrandr(

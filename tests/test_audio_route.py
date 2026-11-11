@@ -12,6 +12,7 @@ from pi_kiosk.audio_route import list_sinks, route
 
 TV = {"id": 57, "name": "alsa_output.platform-fef00700.hdmi.hdmi-stereo", "card": "vc4-hdmi-0"}
 PROJECTOR = {"id": 61, "name": "alsa_output.platform-fef05700.hdmi.hdmi-stereo", "card": "vc4-hdmi-1"}
+DUMMY = {"id": 62, "name": "auto_null", "card": ""}
 
 PACTL_SINKS = """Sink #57
 \tName: alsa_output.platform-fef00700.hdmi.hdmi-stereo
@@ -73,6 +74,47 @@ class FakeRunner:
 
 
 class RouteTests(unittest.TestCase):
+    def test_pipewire_excludes_only_the_dummy_sink_and_keeps_other_virtual_outputs(self):
+        virtual = {"id": 63, "name": "virtual-speakers", "card": ""}
+
+        sinks = audio_route.parse_pw_dump(pw_dump(DUMMY, virtual, TV))
+
+        self.assertEqual([sink["name"] for sink in sinks], [virtual["name"], TV["name"]])
+
+    def test_without_a_screen_it_waits_past_the_dummy_output(self):
+        sleeps = []
+        runner = FakeRunner(dumps=[pw_dump(DUMMY), pw_dump(TV)])
+
+        target, sinks, is_default = route(run=runner, sleep=sleeps.append)
+
+        self.assertIsNone(target)
+        self.assertFalse(is_default)
+        self.assertEqual([sink["name"] for sink in sinks], [TV["name"]])
+        self.assertEqual(sleeps, [audio_route.POLL_SECONDS])
+        self.assertEqual(runner.defaults(), [])
+
+    def test_uses_pulse_when_pipewire_has_no_usable_playback_sinks(self):
+        for dump in ("[]", pw_dump(), pw_dump(DUMMY)):
+            with self.subTest(dump=dump):
+                runner = FakeRunner(dumps=[dump], pactl=PACTL_SINKS)
+                sleeps = []
+
+                target, _, is_default = route("HDMI-A-1", run=runner, sleep=sleeps.append)
+
+                self.assertEqual(target["name"], TV["name"])
+                self.assertTrue(is_default)
+                self.assertIn(["pactl", "list", "sinks"], runner.calls)
+                self.assertEqual(runner.defaults(), [["pactl", "set-default-sink", TV["name"]]])
+                self.assertEqual(sleeps, [])
+
+    def test_prefers_pipewire_when_it_has_playback_sinks(self):
+        runner = FakeRunner(dumps=[pw_dump(TV)], pactl=PACTL_SINKS)
+
+        sinks = list_sinks(runner)
+
+        self.assertEqual([sink["name"] for sink in sinks], [TV["name"]])
+        self.assertEqual(runner.calls, [["pw-dump"]])
+
     def test_sound_goes_to_the_tv_and_becomes_the_default_not_the_projector(self):
         runner = FakeRunner(dumps=[pw_dump(PROJECTOR, TV)])
 
