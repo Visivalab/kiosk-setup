@@ -90,10 +90,6 @@ class ParsePactlSinksTests(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ScreenAudioOutputTests(unittest.TestCase):
     HDMI_0 = AudioOutput("pulse/hdmi0", "HDMI (HDMI) - vc4-hdmi-0", card="vc4-hdmi-0")
     HDMI_1 = AudioOutput("pulse/hdmi1", "HDMI (HDMI) - vc4-hdmi-1", card="vc4-hdmi-1")
@@ -107,3 +103,7 @@ class ScreenAudioOutputTests(unittest.TestCase):
     def test_no_match_when_the_screen_has_no_audio_output(self):
         self.assertIsNone(screen_audio_output("HDMI-A-2", [self.HDMI_0]))
         self.assertIsNone(screen_audio_output("DSI-1", [self.HDMI_0, self.HDMI_1]))
+
+
+if __name__ == "__main__":
+    unittest.main()
