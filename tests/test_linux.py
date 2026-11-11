@@ -91,6 +91,29 @@ class LinuxHostTests(unittest.TestCase):
         self.assertIn("XDG_RUNTIME_DIR=/run/user/1000", calls[0])
         self.assertEqual(calls[0][:4], ["sudo", "-H", "-u", "pi"])
 
+    def test_audio_outputs_come_from_pw_dump_when_pactl_is_not_installed(self):
+        import json
+
+        host = LinuxHost()
+        dump = json.dumps([{"id": 57, "type": "PipeWire:Interface:Node", "info": {"props": {
+            "media.class": "Audio/Sink", "node.name": "hdmi0", "node.description": "HDMI",
+            "alsa.card_name": "vc4-hdmi-0"}}}])
+
+        def fake_run(argv, **kwargs):
+            if "pw-dump" in argv:
+                return subprocess.CompletedProcess(argv, 0, stdout=dump, stderr="")
+            raise FileNotFoundError("pactl")
+
+        user = mock.Mock(pw_uid=1000, pw_dir="/home/pi")
+        with mock.patch.object(host, "_desktop_session_env", return_value=None), \
+                mock.patch.object(host, "is_root", return_value=True), \
+                mock.patch.object(host, "user", return_value="pi"), \
+                mock.patch("pi_kiosk.linux.pwd.getpwnam", return_value=user), \
+                mock.patch("pi_kiosk.linux.subprocess.run", side_effect=fake_run):
+            outputs = host.audio_outputs()
+
+        self.assertEqual([(output.id, output.card) for output in outputs], [("pulse/hdmi0", "vc4-hdmi-0")])
+
     def test_launch_without_a_desktop_session_raises_a_clear_error(self):
         from pi_kiosk.linux import DesktopSessionUnavailable
 

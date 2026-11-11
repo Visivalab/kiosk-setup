@@ -204,7 +204,7 @@ def _video_lines(context: WizardContext) -> list[str]:
             _checked("Configured labwc autostart to launch the video on the next graphical login")
         )
     if deployment.fullscreen_loop_configured:
-        lines.append(_checked("Configured mpv for fullscreen looping playback"))
+        lines.append(_checked("Configured VLC for fullscreen looping playback"))
     return lines
 
 

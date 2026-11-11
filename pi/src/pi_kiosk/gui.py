@@ -118,6 +118,7 @@ class DemoChannel:
         names = ["HDMI-A-1", "HDMI-A-2", "HDMI-A-3"][: self.count]
         return {
             "type": "hello",
+            "version": "demo",
             "platform": "raspberry-pi",
             "user": "pi",
             "home": str(Path.home()),
@@ -174,7 +175,7 @@ def run_window(channel) -> int:
     audio_outputs = hello["audioOutputs"]
 
     root = tk.Tk()
-    root.title("Kiosk setup")
+    root.title(f"Kiosk setup {hello.get('version', '')}".strip())
     root.geometry("760x780")
     root.minsize(600, 480)
 
@@ -460,7 +461,7 @@ def run_window(channel) -> int:
         warning = (
             "This stops the kiosk, removes its startup, status reporting and autologin, deletes "
             "the files owned by pi-kiosk and restores normal rotation.\n\n"
-            "RustDesk, mpv and the remote registration record are left unchanged.\n\nContinue?"
+            "RustDesk, VLC and the remote registration record are left unchanged.\n\nContinue?"
         )
         if messagebox.askyesno("Remove kiosk setup", warning, icon="warning", default="no", parent=root):
             start({"type": "cleanup"}, "Removing the kiosk configuration...")

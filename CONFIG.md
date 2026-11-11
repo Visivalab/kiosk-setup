@@ -331,7 +331,7 @@ next graphical login. Previously downloaded webapp or video files and the
 unused launcher may remain on disk, but they are no longer referenced by
 autostart.
 
-### Will the kiosk restart automatically if Chromium or mpv exits?
+### Will the kiosk restart automatically if Chromium or VLC exits?
 
 No. labwc starts the launcher once per graphical login. If the foreground kiosk
 process exits, it is not supervised or restarted by systemd. Logging in again or
@@ -533,14 +533,17 @@ the running kiosk keeps its current video.
 
 Each screen gets its own video, downloaded into
 `<home>/.local/share/pi-kiosk/video/<output>/current/`. The single
-`video-kiosk.sh` launcher starts one mpv per screen with
-`--fs-screen-name=<output>` and waits for all of them. Only the screen chosen
+`video-kiosk.sh` launcher starts one VLC per screen, fullscreen on that screen
+(see "How does each video find its screen?"), and waits for all of them. Only the screen chosen
 for audio plays sound; the others use `--no-audio`. The sound goes to the
 speakers of that same screen (on a Pi, `HDMI-A-1` is the audio card
 `vc4-hdmi-0` and `HDMI-A-2` is `vc4-hdmi-1`), so a projector without speakers
-never takes it. Choose another output only for separate speakers. If the
-output is still not present after the launcher's audio wait (see below), mpv
-uses the default output. The players start together but are not frame-synchronised.
+never takes it. Choose another output only for separate speakers. The
+launcher also makes that output the system default, so the sound cannot drift
+to the other screen. If the output is still not present after the launcher's
+audio wait (see below), VLC uses the default output, and the wizard's final
+summary shows a `WARNING - sound` line when it cannot see the speakers at
+setup time. The players start together but are not frame-synchronised.
 
 Webapp kiosks remain single-screen, as on Windows.
 
@@ -566,61 +569,78 @@ graphical login.
 
 ### How is the video played?
 
-The launcher starts `mpv` with fullscreen, infinite looping, hidden controls,
-and automatic cursor hiding:
+With VLC, the same player that plays the files smoothly when opened by hand on
+the Pi, and the one the Windows kiosk uses. mpv was used before, but on a Pi 5
+with two screens it stuttered, and Raspberry Pi supports VLC, not mpv
+([forum](https://forums.raspberrypi.com/viewtopic.php?t=393942)). Raspberry Pi
+builds VLC to use the HEVC hardware decoder without extra copies.
+
+The launcher runs the full `vlc` with its Qt window, not `cvlc`, whose own
+Wayland output crashes on a Pi 5. The options are in `VLC_ARGS`:
 
 ```text
---fs --loop-file=inf --hwdec="$HWDEC" --no-osc --no-osd-bar --cursor-autohide=always
+--fullscreen --repeat --no-video-title-show --no-osd --no-qt-fs-controller
+--mouse-hide-timeout=0 --no-mouse-events --no-qt-privacy-ask --qt-continue=0
 ```
 
-Touch-to-mouse emulation is disabled with:
+Fullscreen, looping, no title, controls or cursor over the video.
+`--no-mouse-events` keeps a double tap on a touchscreen from leaving
+fullscreen; the keyboard stays available. The last two skip VLC's first-run
+privacy question and its "continue where you left off?" prompt. VLC refuses to
+start on an unknown option, so all of these exist in VLC 3.0 on any Linux
+build.
 
-```text
---input-touch-emulate-mouse=no
-```
+### How does each video find its screen?
 
-Keyboard and mouse input are otherwise left available.
+VLC picks the fullscreen screen by number (`--qt-fullscreen-screennumber`), as
+on Windows. Its Qt window goes through XWayland, so the number is counted the
+way Qt sees XWayland's screens: in `xrandr` order, primary first. XWayland
+names those screens after the Wayland outputs (`HDMI-A-1`), so at every start
+the launcher looks the output up in `xrandr --query`. If `xrandr` is missing or
+uses other names, it falls back to the order the wizard detected.
+
+The wizard's "launch now" runs the launcher with `WAYLAND_DISPLAY` only. When
+`DISPLAY` is empty, the launcher takes XWayland's display from its socket in
+`/tmp/.X11-unix`.
+
+If the two videos come up on swapped screens, tell us which video went where:
+the numbering is the only part that could not be tried on a real Pi.
 
 ### Why can the video take a few seconds to start after boot?
 
 At boot, labwc runs the launcher before PipeWire has found the HDMI audio
-outputs. mpv opens its audio output only once, so a player started that early
+outputs. VLC opens its audio output only once, so a player started that early
 stays silent until the next login, even though it worked when launched from
-the wizard. Before starting a player with sound, the launcher waits until
-`pactl list short sinks` shows the chosen output (or any output, when the
-default is used), for at most 20 seconds. After that it starts anyway, so a
-screen without speakers still plays its video. When every screen is muted
+the wizard. Before starting a player with sound, the launcher runs
+`<home>/.config/pi-kiosk/audio-route.py` (Python stdlib, written by the
+wizard). It reads the outputs with `pw-dump`, which ships with PipeWire, or
+with `pactl` when `pw-dump` is missing, and waits at most 20 seconds for the
+output: the speakers of the screen that plays the sound, or the output chosen
+in the wizard. When found, it makes it the default with `wpctl set-default`
+and the VLC with sound gets `PULSE_SINK=<name>`. After 20 seconds the videos start
+anyway, so a screen without speakers still plays. When every screen is muted
 there is no wait.
+
+Each start rewrites `<home>/.local/state/pi-kiosk/audio.log`: the outputs it
+saw (with their `vc4-hdmi-N` card) and where the sound went, or `NOT FOUND`.
+Read it first when a Pi has no sound.
 
 ### Does the video use hardware decoding?
 
-Yes. mpv decodes in software unless told otherwise, and a Pi's CPU cannot keep
-up with high-bitrate video, let alone two screens at once. The launcher sets
-`HWDEC` at the top and passes `--hwdec="$HWDEC"`:
-
-| Platform | `HWDEC` | Why |
-|---|---|---|
-| Raspberry Pi | `drm-copy` | Reaches the Pi's HEVC (H.265) hardware decoder through FFmpeg's DRM hwaccel, and copies frames back so any mpv video output can show them. |
-| Ubuntu/Debian desktop | `auto-safe` | mpv picks VA-API, NVDEC, etc. when available. |
-
-A file the hardware cannot decode still plays, in software. On a Pi this
-matters for H.264: a Pi 5 has no H.264 decoder at all, and a Pi 4 decodes only
-one 1080p stream. For smooth playback on a Pi, encode the videos as HEVC at the
-screen's resolution (1080p for a 1080p screen), for example:
+Yes. VLC uses the hardware decoder on its own when the file allows it. On a Pi
+that means HEVC (H.265): a Pi 5 has no H.264 decoder at all, and a Pi 4
+decodes only one 1080p stream. For smooth playback on a Pi, encode the videos
+as HEVC at the screen's resolution (1080p for a 1080p screen), for example:
 
 ```bash
 ffmpeg -i input.mp4 -vf "scale=1920:1080:force_original_aspect_ratio=decrease" \
   -c:v libx265 -preset medium -crf 23 -tag:v hvc1 -c:a aac -b:a 160k output.mp4
 ```
 
-To try another decoder, edit `HWDEC=` in
-`<home>/.config/pi-kiosk/video-kiosk.sh` (for example `drm` or `no`) and log in
-again. Running the wizard again rewrites the launcher.
+### Does `pi-kiosk` install VLC?
 
-### Does `pi-kiosk` install mpv?
-
-Yes, if it cannot find `mpv`, it installs the package with `apt-get` before
-generating the launcher.
+Raspberry Pi OS Desktop ships VLC. If the wizard cannot find `vlc`, it
+installs the package with `apt-get` before generating the launcher.
 
 ### Is there a dedicated video log?
 
@@ -839,5 +859,5 @@ It stops the kiosk players, browser and local server, removes the tagged labwc
 blocks, the status timer and service, the pi-kiosk files under the desktop
 user's home, `/etc/pi-kiosk` and `/usr/local/lib/pi-kiosk`, disables desktop
 autologin (`raspi-config` B3) and restores normal rotation on every screen.
-RustDesk, mpv, the blanking setting and the remote registration record are left
+RustDesk, VLC, the blanking setting and the remote registration record are left
 unchanged.

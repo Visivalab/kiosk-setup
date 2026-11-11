@@ -1,7 +1,7 @@
 """Undo what pi-kiosk configured, like the Windows "Remove kiosk setup" button.
 
 Only tagged blocks and files owned by pi-kiosk are removed. Installed packages
-(RustDesk, mpv, wtype, swayidle), the blanking setting and the remote
+(RustDesk, VLC, mpv, wtype, swayidle), the blanking setting and the remote
 registration record are left alone.
 """
 
@@ -111,7 +111,7 @@ def run_cleanup(host, progress: Callable[[str], None] | None = None) -> list[str
     done(f"restored normal rotation on {len(outputs)} display(s).")
 
     done(
-        "Kiosk cleanup completed. RustDesk, mpv, labwc, the Raspberry Pi blanking "
+        "Kiosk cleanup completed. RustDesk, VLC, labwc, the Raspberry Pi blanking "
         "setting, and the remote registration were left unchanged."
     )
     return reports

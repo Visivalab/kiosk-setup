@@ -33,6 +33,26 @@ class RootGuardTests(unittest.TestCase):
         self.assertEqual(host.commands, [])
 
 
+class VersionTests(unittest.TestCase):
+    def test_version_command_prints_the_version_and_changes_nothing(self):
+        from pi_kiosk import __version__
+
+        host = FakeHost()
+        stdout = io.StringIO()
+
+        self.assertEqual(main(["--version"], host=host, ui=FakeUI(), stdout=stdout), 0)
+        self.assertEqual(stdout.getvalue(), f"pi-kiosk-setup {__version__}\n")
+        self.assertEqual(host.commands, [])
+
+    def test_wizard_starts_by_showing_the_version(self):
+        from pi_kiosk import __version__
+
+        stdout = io.StringIO()
+        main(host=FakeHost(raspberry_pi=False), ui=FakeUI(), stdout=stdout, stderr=io.StringIO())
+
+        self.assertEqual(stdout.getvalue().splitlines()[0], f"pi-kiosk-setup {__version__}")
+
+
 class CliTests(unittest.TestCase):
     def test_non_pi_exits_without_running_wizard_steps(self):
         host = FakeHost(raspberry_pi=False)

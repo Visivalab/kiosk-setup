@@ -60,6 +60,11 @@ tests/                         unittest, FakeHost / FakeUI
 - Rotation names: `none` (0), `clockwise` (90), `counterclockwise` (270), `upside-down` (180).
 - Stay on Wayland/labwc. Do not switch the Pi back to X11.
 - Do not commit, deploy, or configure a live Pi unless the user asks.
+- **Bump the version on every commit** that touches the Pi side: `__version__`
+  in `pi/src/pi_kiosk/__init__.py`. Patch (`0.2.0` → `0.2.1`) for fixes, minor
+  (`0.2.1` → `0.3.0`) for new features. Testers read it from the visual
+  wizard's window title, the first line of the terminal wizard, or
+  `sudo ./kiosk.sh --version`, so it tells which build a Pi was set up with.
 - `kiosk.sh` may be piped (`curl … | sudo bash`). Keep the body in `main()` so the script is fully read before stdin is reattached to `/dev/tty`. If `pi/src/pi_kiosk` is missing, it downloads the public GitHub archive.
 
 ## Safety

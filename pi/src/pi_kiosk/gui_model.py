@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+from pi_kiosk import __version__
+
 from pi_kiosk.display import display_title
 from pi_kiosk.kiosk_state import build_state, load_state, screens_report
 from pi_kiosk.shared_config import config as shared_config
@@ -53,6 +55,7 @@ def build_hello(host) -> dict[str, Any]:
         )
     return {
         "type": "hello",
+        "version": __version__,
         "platform": host.platform(),
         "user": host.user(),
         "home": host.home(),

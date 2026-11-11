@@ -161,7 +161,7 @@ class StatusReporterScriptTests(unittest.TestCase):
             Path = namespace["Path"]
             (Path(state_dir) / "display-HDMI-A-1.pid").write_text(str(os.getpid()))
             (Path(state_dir) / "display-HDMI-A-2.pid").write_text("999999999")
-            with mock.patch.object(Path, "read_text", autospec=True, side_effect=_comm_as_mpv(Path.read_text)):
+            with mock.patch.object(Path, "read_text", autospec=True, side_effect=_comm_as_vlc(Path.read_text)):
                 facts = namespace["_screen_facts"](
                     {
                         "stateDir": state_dir,
@@ -177,10 +177,10 @@ class StatusReporterScriptTests(unittest.TestCase):
         self.assertEqual([fact["kiosk_running"] for fact in facts], [True, False])
 
 
-def _comm_as_mpv(original):
+def _comm_as_vlc(original):
     def read_text(path, *args, **kwargs):
         if str(path).startswith("/proc/") and str(path).endswith("/comm"):
-            return "mpv\n"
+            return "vlc\n"
         return original(path, *args, **kwargs)
 
     return read_text

@@ -4,6 +4,7 @@ import sys
 from dataclasses import replace
 from typing import TextIO
 
+from pi_kiosk import __version__
 from pi_kiosk.app import NeedRoot, NotARaspberryPi, Wizard
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import Host
@@ -25,6 +26,9 @@ def main(
     argv = [] if argv is None else list(argv)
     stdout = stdout if stdout is not None else sys.stdout
     stderr = stderr if stderr is not None else sys.stderr
+    print(f"pi-kiosk-setup {__version__}", file=stdout, flush=True)
+    if argv and argv[0] in ("--version", "version"):
+        return 0
     real_host = host if host is not None else LinuxHost()
     real_ui = ui if ui is not None else TerminalUI()
     if argv:
@@ -64,7 +68,7 @@ def _run_command(
 
         return run_gui(host, stderr=stderr)
     if command != "register-totem":
-        print(f"Unknown command: {command}. Commands: register-totem, cleanup, gui.", file=stderr)
+        print(f"Unknown command: {command}. Commands: register-totem, cleanup, gui, --version.", file=stderr)
         return 1
 
     registrar = TotemRegistrar()

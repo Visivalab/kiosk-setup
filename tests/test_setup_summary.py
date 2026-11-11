@@ -245,7 +245,7 @@ class RenderSetupSummaryTests(unittest.TestCase):
             "- [x] Deployed the video file to /home/pi/.local/share/pi-kiosk/video/current/demo.mp4",
             report,
         )
-        self.assertIn("- [x] Configured mpv for fullscreen looping playback", report)
+        self.assertIn("- [x] Configured VLC for fullscreen looping playback", report)
         self.assertIn(
             '- [x] Registered totem "Hall Screen" for machine pi-kiosk-01. Status reporter installed.',
             report,

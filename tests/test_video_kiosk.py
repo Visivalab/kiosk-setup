@@ -239,9 +239,9 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
         self.assertIn(KIOSK_AUTOSTART_BEGIN, autostart)
         self.assertIn(f"bash {launcher_path(host.home())}", autostart)
         launcher = host.files[launcher_path(host.home())]
-        self.assertIn("mpv", launcher)
-        self.assertIn("--loop-file=inf", launcher)
-        self.assertIn("--input-touch-emulate-mouse=no", launcher)
+        self.assertIn("VLC=/usr/bin/vlc", launcher)
+        self.assertIn("--fullscreen", launcher)
+        self.assertIn("--repeat", launcher)
         self.assertIn("/home/pi/.local/share/pi-kiosk/video/current/demo.mp4", launcher)
         self.assertIn("demo.mp4", report)
         self.assertEqual(
@@ -254,8 +254,8 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
             ],
         )
 
-    def test_installs_mpv_when_missing(self):
-        host = FakeHost(mpv=None)
+    def test_installs_vlc_when_missing(self):
+        host = FakeHost(vlc=None)
 
         VideoKioskStep().apply(
             host,
@@ -265,9 +265,9 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(host.installed_packages, [("mpv",)])
+        self.assertEqual(host.installed_packages, [("vlc",)])
         launcher = host.files[launcher_path(host.home())]
-        self.assertIn("/usr/bin/mpv", launcher)
+        self.assertIn("/usr/bin/vlc", launcher)
 
     def test_keeps_keyboard_and_mouse_input_available(self):
         launcher = launcher_path("/home/pi")
@@ -282,9 +282,9 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
         )
 
         script = host.files[launcher]
-        self.assertIn("--input-touch-emulate-mouse=no", script)
-        self.assertNotIn("--input-cursor=no", script)
-        self.assertNotIn("--input-vo-keyboard=no", script)
+        # A double tap on a touchscreen must not leave fullscreen.
+        self.assertIn("--no-mouse-events", script)
+        self.assertNotIn("--no-keyboard-events", script)
 
     def _single_launcher(self, host: FakeHost) -> str:
         VideoKioskStep().apply(
@@ -296,17 +296,28 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
         )
         return host.files[launcher_path(host.home())]
 
-    def test_pi_decodes_hevc_with_the_hardware_decoder(self):
+    def test_plays_with_vlc_like_a_manually_opened_video(self):
+        # mpv stuttered on a Pi 5 with two screens while VLC, opened by hand,
+        # played both smoothly. Raspberry Pi supports VLC, not mpv.
         script = self._single_launcher(FakeHost())
 
-        self.assertIn("HWDEC=drm-copy", script)
-        self.assertIn('--hwdec="$HWDEC"', script)
+        self.assertNotIn("mpv", script)
+        self.assertIn('"$VLC" "${VLC_ARGS[@]}" "$VIDEO_PATH"', script)
+        for option in (
+            "--fullscreen",
+            "--repeat",
+            "--no-video-title-show",
+            "--no-osd",
+            "--no-qt-fs-controller",
+            "--mouse-hide-timeout=0",
+        ):
+            self.assertIn(option, script)
 
-    def test_desktop_linux_lets_mpv_pick_a_safe_hardware_decoder(self):
-        script = self._single_launcher(FakeHost(platform="linux-desktop"))
+    def test_vlc_never_stops_on_a_first_run_dialog(self):
+        script = self._single_launcher(FakeHost())
 
-        self.assertIn("HWDEC=auto-safe", script)
-        self.assertIn('--hwdec="$HWDEC"', script)
+        self.assertIn("--no-qt-privacy-ask", script)
+        self.assertIn("--qt-continue=0", script)
 
     def test_switching_from_webapp_replaces_the_active_kiosk_launcher(self):
         host = FakeHost()

@@ -15,6 +15,8 @@ from pi_kiosk.steps.video_kiosk import (
     VideoKioskRequest,
     VideoKioskStep,
     VideoScreen,
+    AUDIO_ROUTE_SOURCE,
+    audio_route_path,
     launcher_path,
     normalize_source,
 )
@@ -130,10 +132,22 @@ class ApplyMultiDisplayVideoTests(unittest.TestCase):
         host = FakeHost(wayland_outputs=TWO_OUTPUTS, audio_outputs=[tv, projector])
         request = replace(self._request(), audio_device="", audio_device_name="")
 
-        VideoKioskStep().apply(host, request, WizardContext(host=host, ui=FakeUI()))
+        report = VideoKioskStep().apply(host, request, WizardContext(host=host, ui=FakeUI()))
 
         script = host.files[launcher_path(host.home())]
-        self.assertIn("AUDIO_DEVICE=pulse/hdmi0", script)
+        self.assertIn('python3 "$AUDIO_ROUTE" HDMI-A-1', script)
+        self.assertEqual(host.files[audio_route_path(host.home())], AUDIO_ROUTE_SOURCE)
+        self.assertIn("Sound: through the speakers of HDMI-A-1 (HDMI - vc4-hdmi-0)", report)
+        self.assertIn("audio.log", report)
+
+    def test_warns_on_screen_when_the_speakers_are_not_visible(self):
+        projector = AudioOutput("pulse/hdmi1", "HDMI - vc4-hdmi-1", card="vc4-hdmi-1")
+        host = FakeHost(wayland_outputs=TWO_OUTPUTS, audio_outputs=[projector])
+        request = replace(self._request(), audio_device="", audio_device_name="")
+
+        report = VideoKioskStep().apply(host, request, WizardContext(host=host, ui=FakeUI()))
+
+        self.assertIn("WARNING - sound: the speakers of HDMI-A-1 are not visible", report)
 
     def test_a_chosen_output_wins_over_the_screen_speakers(self):
         tv = AudioOutput("pulse/hdmi0", "HDMI - vc4-hdmi-0", card="vc4-hdmi-0")
@@ -158,27 +172,28 @@ class ApplyMultiDisplayVideoTests(unittest.TestCase):
         VideoKioskStep().apply(host, self._request(), WizardContext(host=host, ui=FakeUI()))
 
         script = host.files[launcher_path(host.home())]
-        self.assertIn('--fs-screen-name="$output"', script)
+        self.assertIn('--qt-fullscreen-screennumber="$screen"', script)
         self.assertIn(
-            "start_player HDMI-A-1 /home/pi/.local/share/pi-kiosk/video/HDMI-A-1/current/HDMI-A-1.mp4 yes",
+            "start_player HDMI-A-1 /home/pi/.local/share/pi-kiosk/video/HDMI-A-1/current/HDMI-A-1.mp4 yes 0",
             script,
         )
         self.assertIn(
-            "start_player HDMI-A-2 /home/pi/.local/share/pi-kiosk/video/HDMI-A-2/current/HDMI-A-2.mp4 no",
+            "start_player HDMI-A-2 /home/pi/.local/share/pi-kiosk/video/HDMI-A-2/current/HDMI-A-2.mp4 no 1",
             script,
         )
         self.assertIn("AUDIO_DEVICE=pulse/alsa_output.hdmi-1", script)
         self.assertIn("display-$output.pid", script)
         self.assertEqual(script.splitlines()[-1], "wait")
 
-    def test_every_player_uses_the_hardware_decoder_on_a_pi(self):
+    def test_every_screen_gets_its_own_vlc(self):
         host = FakeHost(wayland_outputs=TWO_OUTPUTS)
 
         VideoKioskStep().apply(host, self._request(), WizardContext(host=host, ui=FakeUI()))
 
         script = host.files[launcher_path(host.home())]
-        self.assertIn("HWDEC=drm-copy", script)
-        self.assertIn('--hwdec="$HWDEC"', script)
+        self.assertNotIn("mpv", script)
+        self.assertIn("VLC=/usr/bin/vlc", script)
+        self.assertIn('"$VLC" "${VLC_ARGS[@]}"', script)
 
     def test_autostart_runs_the_shared_launcher_once(self):
         host = FakeHost(wayland_outputs=TWO_OUTPUTS)

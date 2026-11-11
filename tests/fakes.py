@@ -48,7 +48,7 @@ class FakeHost:
         deployed_webapp: WebAppDeployment | None = None,
         deployed_video: VideoDeployment | None = None,
         chromium: str | None = "chromium-browser",
-        mpv: str | None = "/usr/bin/mpv",
+        vlc: str | None = "/usr/bin/vlc",
         wtype: str | None = "/usr/bin/wtype",
         swayidle: str | None = "/usr/bin/swayidle",
         touchscreen: bool = False,
@@ -85,7 +85,7 @@ class FakeHost:
             file_name="demo.mp4",
         )
         self.chromium = chromium
-        self.mpv = mpv
+        self.vlc = vlc
         self.wtype = wtype
         self.swayidle = swayidle
         self.touchscreen = touchscreen
@@ -230,8 +230,8 @@ class FakeHost:
     def chromium_command(self) -> str | None:
         return self.chromium
 
-    def mpv_command(self) -> str | None:
-        return self.mpv
+    def vlc_command(self) -> str | None:
+        return self.vlc
 
     def wtype_command(self) -> str | None:
         return self.wtype
@@ -241,8 +241,8 @@ class FakeHost:
 
     def ensure_packages_installed(self, packages: tuple[str, ...]) -> None:
         self.installed_packages.append(packages)
-        if "mpv" in packages and self.mpv is None:
-            self.mpv = "/usr/bin/mpv"
+        if "vlc" in packages and self.vlc is None:
+            self.vlc = "/usr/bin/vlc"
         if "wtype" in packages and self.wtype is None:
             self.wtype = "/usr/bin/wtype"
         if "swayidle" in packages and self.swayidle is None:

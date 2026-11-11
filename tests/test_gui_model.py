@@ -66,6 +66,9 @@ class HelloTests(unittest.TestCase):
         self.assertEqual(hello["displays"][0]["label"], "Display 1 (HDMI-A-1 Samsung) - 1920x1080")
         self.assertEqual(hello["audioOutputs"], [{"id": "pulse/hdmi-1", "name": "HDMI 1"}])
         self.assertTrue(hello["touchscreen"])
+        from pi_kiosk import __version__
+
+        self.assertEqual(hello["version"], __version__)
         self.assertEqual(hello["state"]["displays"][0]["output"], "HDMI-A-1")
         self.assertEqual([choice["id"] for choice in hello["rotations"]], ["none", "clockwise", "counterclockwise", "upside-down"])
 

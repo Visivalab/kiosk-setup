@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import posixpath
+from pathlib import Path
 import shlex
 from dataclasses import replace
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+from pi_kiosk import audio_route
 from pi_kiosk.audio import screen_audio_output
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import DesktopSessionUnavailable, UserFacingError
@@ -78,63 +80,84 @@ def normalize_source(value: str) -> VideoSource:
     return VideoSource(shared_url=text, download_url=download_url)
 
 
-_MPV_ARGS = (
-    '--fs --loop-file=inf --hwdec="$HWDEC" --no-osc --no-osd-bar '
-    "--cursor-autohide=always --input-touch-emulate-mouse=no"
+# VLC, not mpv: Raspberry Pi maintains VLC and supports it, not mpv. On a Pi 5
+# with two screens mpv stuttered while VLC, opened by hand, played both videos
+# smoothly. It is the full VLC with its Qt window (as on Windows): cvlc's own
+# Wayland output crashes on a Pi 5. VLC stops on an unknown option, so every
+# one below exists in VLC 3.0 on any Linux build.
+VLC_OPTIONS = (
+    "--fullscreen",
+    "--repeat",
+    "--no-video-title-show",
+    "--no-osd",
+    "--no-qt-fs-controller",
+    "--mouse-hide-timeout=0",
+    # A double tap on a touchscreen would leave fullscreen.
+    "--no-mouse-events",
+    # First-run privacy question and "continue where you left off?".
+    "--no-qt-privacy-ask",
+    "--qt-continue=0",
+)
+_VLC_ARGS_LINE = f"VLC_ARGS=({' '.join(VLC_OPTIONS)})"
+
+# The Qt window goes through XWayland, and "launch now" from the wizard runs the
+# launcher with WAYLAND_DISPLAY only. Find XWayland's display in that case.
+_FIND_X11_DISPLAY = (
+    'if [ -z "${DISPLAY:-}" ]; then',
+    '  for socket in "${PI_KIOSK_X11_DIR:-/tmp/.X11-unix}"/X*; do',
+    '    if [ -S "$socket" ]; then export DISPLAY=":${socket##*/X}"; break; fi',
+    "  done",
+    "fi",
 )
 
-
-def hwdec_for(platform: str | None) -> str:
-    """mpv decodes in software unless told otherwise, which a Pi cannot keep up with.
-
-    On a Pi the HEVC hardware decoder is reached through FFmpeg's DRM hwaccel;
-    drm-copy hands frames back to normal memory, so it works with any mpv video
-    output. If the file is not HEVC (Pi 5 has no H.264 decoder), mpv quietly
-    falls back to software. Desktops get mpv's own safe choice (VA-API, NVDEC).
-    """
-    return "drm-copy" if platform == "raspberry-pi" else "auto-safe"
+# VLC picks the fullscreen screen by number, counted as Qt sees XWayland's
+# screens: in xrandr order, primary first. XWayland names them after the
+# Wayland outputs (HDMI-A-1). Otherwise the wizard's order is used.
+_SCREEN_NUMBER = (
+    "screen_number() {",
+    '  local want="$1" fallback="$2" i=0 name',
+    "  while IFS= read -r name; do",
+    '    if [ "$name" = "$want" ]; then echo "$i"; return; fi',
+    "    i=$((i + 1))",
+    "  done < <(xrandr --query 2>/dev/null \\",
+    "    | awk '$2 == \"connected\" { first = ($3 == \"primary\") ? 0 : 1; print first, $1 }' \\",
+    "    | sort -s -n -k1,1 | cut -d' ' -f2)",
+    '  echo "$fallback"',
+    "}",
+)
 
 
 # At boot labwc runs the launcher before PipeWire has published the HDMI
-# outputs. mpv opens its audio output once, so a player started too early stays
-# silent until the next login. Wait a bounded time, then start regardless so a
-# screen without speakers still shows its video.
-AUDIO_WAIT_TRIES = 40  # x 0.5 s
-_WAIT_FOR_AUDIO = (
-    "# Waits until PipeWire lists the audio output (any output when none is given).",
-    "wait_for_audio() {",
-    '  local want="${1:-}" sinks tries=0',
-    "  command -v pactl >/dev/null 2>&1 || return 0",
-    f'  while [ "$tries" -lt {AUDIO_WAIT_TRIES} ]; do',
-    '    sinks="$(LC_ALL=C pactl list short sinks 2>/dev/null | cut -f2 | grep -vxF auto_null || true)"',
-    '    if [ -n "$want" ]; then',
-    '      if grep -qxF "$want" <<<"$sinks"; then return 0; fi',
-    '    elif [ -n "$sinks" ]; then',
-    "      return 0",
-    "    fi",
-    "    tries=$((tries + 1))",
-    "    sleep 0.5",
-    "  done",
-    "  return 0",
-    "}",
-)
+# outputs, and VLC opens its audio output only once. audio-route.py (copied
+# next to the launcher) waits for the speakers, makes them the system default
+# so the sound cannot go to a screen without speakers (a projector), and logs
+# what it did to ~/.local/state/pi-kiosk/audio.log.
+AUDIO_ROUTE_SOURCE = Path(audio_route.__file__).read_text()
+AUDIO_LOG = "~/.local/state/pi-kiosk/audio.log"
+_AUDIO_ROUTE_LINE = 'AUDIO_ROUTE="$(dirname "${BASH_SOURCE[0]}")/audio-route.py"'
+
+
+def audio_route_path(home: str) -> str:
+    return f"{home}/.config/pi-kiosk/audio-route.py"
 
 
 def launcher_path(home: str) -> str:
     return f"{home}/.config/pi-kiosk/video-kiosk.sh"
 
 
-def launcher_script(mpv: str, video_path: str, hwdec: str = "auto-safe") -> str:
+def launcher_script(vlc: str, video_path: str) -> str:
     return "\n".join(
         [
             "#!/usr/bin/env bash",
             "set -euo pipefail",
             f"VIDEO_PATH={shlex.quote(video_path)}",
-            f"MPV={shlex.quote(mpv)}",
-            f"HWDEC={shlex.quote(hwdec)}",
-            *_WAIT_FOR_AUDIO,
-            "wait_for_audio",
-            f'"$MPV" {_MPV_ARGS} "$VIDEO_PATH"',
+            f"VLC={shlex.quote(vlc)}",
+            _VLC_ARGS_LINE,
+            *_FIND_X11_DISPLAY,
+            _AUDIO_ROUTE_LINE,
+            "# Wait until the sound output exists, or VLC starts silent at boot.",
+            'python3 "$AUDIO_ROUTE" >/dev/null 2>&1 || true',
+            '"$VLC" "${VLC_ARGS[@]}" "$VIDEO_PATH"',
             "",
         ]
     )
@@ -154,18 +177,18 @@ def local_video_problem(host, source: VideoSource) -> str | None:
 
 
 def multi_launcher_script(
-    mpv: str,
+    vlc: str,
     players: list[tuple[str, str, bool]],
     audio_device: str = "",
-    hwdec: str = "auto-safe",
 ) -> str:
-    """One mpv per screen, each pinned to its output; only one keeps its sound."""
+    """One VLC per screen, each fullscreen on its own output; only one keeps its sound."""
     lines = [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
-        f"MPV={shlex.quote(mpv)}",
+        f"VLC={shlex.quote(vlc)}",
         f"AUDIO_DEVICE={shlex.quote(audio_device)}",
-        f"HWDEC={shlex.quote(hwdec)}",
+        _VLC_ARGS_LINE,
+        *_FIND_X11_DISPLAY,
         'STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/pi-kiosk"',
         'mkdir -p "$STATE_DIR"',
         "pids=()",
@@ -175,33 +198,36 @@ def multi_launcher_script(
         "}",
         "trap cleanup EXIT",
         "trap 'exit 0' INT TERM",
-        *_WAIT_FOR_AUDIO,
+        *_SCREEN_NUMBER,
+        _AUDIO_ROUTE_LINE,
+        'sink=""',
     ]
-    if any(audio for _, _, audio in players):
-        lines.append('wait_for_audio "${AUDIO_DEVICE#pulse/}"')
+    audio_screen = next((output for output, _, audio in players if audio), None)
+    if audio_screen is not None:
+        lines += [
+            "# Finds the speakers (of this screen, or the chosen output) and makes them the",
+            "# default; prints nothing if they are missing, and VLC uses the default output.",
+            f'sink="$(python3 "$AUDIO_ROUTE" {shlex.quote(audio_screen)} "${{AUDIO_DEVICE#pulse/}}" 2>/dev/null || true)"',
+        ]
     lines += [
-        "audio_args=()",
-        'if [ -n "$AUDIO_DEVICE" ]; then',
-        '  sink="${AUDIO_DEVICE#pulse/}"',
-        "  # A missing device falls back to the default output instead of silence.",
-        '  if command -v pactl >/dev/null 2>&1 && LC_ALL=C pactl list short sinks 2>/dev/null | cut -f2 | grep -qxF "$sink"; then',
-        '    audio_args=(--audio-device="$AUDIO_DEVICE")',
-        "  fi",
-        "fi",
         "start_player() {",
-        '  local output="$1" video="$2" sound="$3"',
-        '  local extra=("${audio_args[@]}")',
-        '  if [ "$sound" != "yes" ]; then extra=(--no-audio); fi',
-        f'  "$MPV" {_MPV_ARGS} \\',
-        '    --fs-screen-name="$output" --screen-name="$output" --title="pi-kiosk-$output" \\',
+        '  local output="$1" video="$2" sound="$3" fallback="$4" screen',
+        '  screen="$(screen_number "$output" "$fallback")"',
+        '  local run=() extra=(--no-audio)',
+        '  if [ "$sound" = "yes" ]; then',
+        "    extra=()",
+        "    # An empty PULSE_SINK would name no device at all; leave it unset then.",
+        '    if [ -n "$sink" ]; then run=(env PULSE_SINK="$sink"); fi',
+        "  fi",
+        '  "${run[@]}" "$VLC" "${VLC_ARGS[@]}" --qt-fullscreen-screennumber="$screen" \\',
         '    "${extra[@]}" "$video" &',
         '  pids+=("$!")',
         '  echo "$!" >"$STATE_DIR/display-$output.pid"',
         "}",
     ]
-    for output, video_path, audio in players:
+    for number, (output, video_path, audio) in enumerate(players):
         sound = "yes" if audio else "no"
-        lines.append(f"start_player {shlex.quote(output)} {shlex.quote(video_path)} {sound}")
+        lines.append(f"start_player {shlex.quote(output)} {shlex.quote(video_path)} {sound} {number}")
     lines += ["wait", ""]
     return "\n".join(lines)
 
@@ -259,13 +285,14 @@ class VideoKioskStep:
         if len(request.screens) > 1:
             return self._apply_many(host, request, context, progress)
         deployment = host.deploy_video(request.source, progress=progress)
-        mpv = self._mpv(host)
+        vlc = self._vlc(host)
 
         home = host.home()
         host.mkdir(f"{home}/.config/pi-kiosk")
+        host.write_file(audio_route_path(home), AUDIO_ROUTE_SOURCE)
         host.write_file(
             launcher_path(home),
-            launcher_script(mpv, deployment.video_path, hwdec_for(host.platform())),
+            launcher_script(vlc, deployment.video_path),
         )
         install_kiosk_autostart(host, launcher_path(home))
         if context is not None:
@@ -278,22 +305,22 @@ class VideoKioskStep:
 
         report = (
             f"Done: video kiosk deployed with {deployment.file_name}. "
-            "mpv will start on the next graphical login."
+            "VLC will start on the next graphical login."
         )
         if request.next_action is not None:
             report = f"{report} {self.perform_next_action(host, request.next_action)}"
         return report
 
-    def _mpv(self, host: VideoHost) -> str:
-        mpv = host.mpv_command()
-        if mpv is None:
-            host.ensure_packages_installed(("mpv",))
-            mpv = host.mpv_command()
-        if mpv is None:
+    def _vlc(self, host: VideoHost) -> str:
+        vlc = host.vlc_command()
+        if vlc is None:
+            host.ensure_packages_installed(("vlc",))
+            vlc = host.vlc_command()
+        if vlc is None:
             raise UserFacingError(
-                "mpv could not be prepared on this Pi. Install it and run the wizard again."
+                "VLC could not be prepared on this Pi. Install it and run the wizard again."
             )
-        return mpv
+        return vlc
 
     def _apply_many(
         self,
@@ -307,25 +334,19 @@ class VideoKioskStep:
             if progress is not None:
                 progress(f"Preparing the video for {screen.output}")
             deployments.append(host.deploy_video(screen.source, progress=progress, slot=screen.output))
-        mpv = self._mpv(host)
+        vlc = self._vlc(host)
 
         home = host.home()
         host.mkdir(f"{home}/.config/pi-kiosk")
+        host.write_file(audio_route_path(home), AUDIO_ROUTE_SOURCE)
         players = [
             (screen.output, deployment.video_path, screen.audio)
             for screen, deployment in zip(request.screens, deployments)
         ]
         audio = next((screen.output for screen in request.screens if screen.audio), None)
-        audio_device, audio_device_name = request.audio_device, request.audio_device_name
-        if audio and not audio_device:
-            # Left to PipeWire, the sound can go to a screen without speakers
-            # (a projector). Send it to the chosen screen's own HDMI instead.
-            speakers = screen_audio_output(audio, host.audio_outputs())
-            if speakers is not None:
-                audio_device, audio_device_name = speakers.id, f"the speakers of {audio}"
         host.write_file(
             launcher_path(home),
-            multi_launcher_script(mpv, players, audio_device, hwdec_for(host.platform())),
+            multi_launcher_script(vlc, players, request.audio_device),
         )
         install_kiosk_autostart(host, launcher_path(home))
         if context is not None:
@@ -337,22 +358,38 @@ class VideoKioskStep:
             )
             context.state[VIDEO_SCREENS_KEY] = list(zip(request.screens, deployments))
 
-        output = audio_device_name or "the default output"
-        audio_report = (
-            f"Audio plays from {audio} through {output}; the other screens are muted."
-            if audio
-            else "Every screen plays muted."
-        )
+        audio_report = self._audio_report(host, request, audio)
         names = ", ".join(
             f"{screen.output}: {deployment.file_name}" for screen, deployment in zip(request.screens, deployments)
         )
         report = (
             f"Done: video kiosk deployed on {len(deployments)} displays ({names}). "
-            f"mpv will start on every screen on the next graphical login. {audio_report}"
+            f"VLC will start on every screen on the next graphical login. {audio_report}"
         )
         if request.next_action is not None:
             report = f"{report} {self.perform_next_action(host, request.next_action)}"
         return report
+
+    def _audio_report(self, host: VideoHost, request: VideoKioskRequest, audio: str | None) -> str:
+        """Tells the person at the Pi where the sound will go, so a wrong output is visible."""
+        if audio is None:
+            return "Every screen plays muted."
+        log = f"Details at every start: {AUDIO_LOG}."
+        if request.audio_device:
+            output = request.audio_device_name or request.audio_device
+            return f"Sound: from {audio} through {output}; the other screens are muted. {log}"
+        speakers = screen_audio_output(audio, host.audio_outputs())
+        if speakers is not None:
+            return (
+                f"Sound: through the speakers of {audio} ({speakers.name}); "
+                f"the other screens are muted. {log}"
+            )
+        return (
+            f"WARNING - sound: the speakers of {audio} are not visible right now "
+            "(is that screen on, with its sound enabled?). The kiosk looks for them again "
+            "at every start; if they are still missing the sound goes to the system default "
+            f"output, which can be the other screen. {log}"
+        )
 
     def next_action_prompt(self) -> str:
         return VIDEO_NEXT_ACTION_PROMPT

@@ -141,7 +141,9 @@ def _pid_running(path: Path) -> bool | None:
         pass
     try:
         # A stale pid file can point at a reused pid after a power cut.
-        return Path(f"/proc/{pid}/comm").read_text(encoding="utf-8").strip().startswith("mpv")
+        # vlc since the Pi switched players; mpv until an older install is set up again.
+        comm = Path(f"/proc/{pid}/comm").read_text(encoding="utf-8").strip()
+        return comm.startswith(("vlc", "mpv"))
     except OSError:
         return True
 

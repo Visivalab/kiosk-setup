@@ -18,7 +18,8 @@ from urllib import error, request
 from urllib.parse import unquote, urlparse
 import zipfile
 
-from pi_kiosk.audio import parse_pactl_sinks
+from pi_kiosk.audio import sinks_to_outputs
+from pi_kiosk.audio_route import list_sinks
 from pi_kiosk.detect import looks_like_raspberry_pi
 from pi_kiosk.display import parse_drm_connectors, parse_wlr_randr
 from pi_kiosk.machine import (
@@ -580,9 +581,16 @@ class LinuxHost:
         return outputs or parse_drm_connectors(_drm_connectors())
 
     def audio_outputs(self) -> list[AudioOutput]:
-        # pactl only needs the user's runtime dir, not Wayland, so this also
-        # works on the first run from an Xorg session.
-        argv = ["env", "LC_ALL=C", "pactl", "list", "sinks"]
+        # pw-dump comes with PipeWire; pactl is not always installed.
+        return sinks_to_outputs(list_sinks(self._run_as_desktop_user))
+
+    def _run_as_desktop_user(self, argv: list[str]) -> str | None:
+        """stdout of a command run as the desktop user, or None if it failed.
+
+        Only needs the user's runtime dir, not Wayland, so this also works on
+        the first run from an Xorg session.
+        """
+        argv = ["env", "LC_ALL=C", *argv]
         env = self._desktop_session_env()
         try:
             if env is not None:
@@ -594,10 +602,8 @@ class LinuxHost:
                 command = prefix + [f"{key}={value}" for key, value in runtime.items()] + argv[1:]
                 result = subprocess.run(command, check=False, text=True, capture_output=True)
         except (FileNotFoundError, KeyError):
-            return []
-        if result.returncode != 0:
-            return []
-        return parse_pactl_sinks(result.stdout)
+            return None
+        return result.stdout if result.returncode == 0 else None
 
     def remove_path(self, path: str) -> None:
         target = Path(path)
@@ -674,8 +680,8 @@ class LinuxHost:
     ) -> VideoDeployment:
         return self._video_deployer.deploy(source, progress, slot)
 
-    def mpv_command(self) -> str | None:
-        return shutil.which("mpv")
+    def vlc_command(self) -> str | None:
+        return shutil.which("vlc")
 
     def wtype_command(self) -> str | None:
         return shutil.which("wtype")

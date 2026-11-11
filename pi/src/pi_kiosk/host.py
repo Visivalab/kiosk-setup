@@ -49,7 +49,7 @@ class WaylandOutput:
 
 @dataclass(frozen=True)
 class AudioOutput:
-    """A playback device. `id` is the value mpv takes in --audio-device."""
+    """A playback device. `id` is "pulse/<sink name>"; the launcher hands the sink name to VLC."""
 
     id: str
     name: str
@@ -174,7 +174,7 @@ class VideoHost(UserHost, FileHost, PackageHost, VideoLaunchHost, Protocol):
 
     def audio_outputs(self) -> list[AudioOutput]: ...
 
-    def mpv_command(self) -> str | None: ...
+    def vlc_command(self) -> str | None: ...
 
     def launch_video_now(self, launcher: str) -> None: ...
 
@@ -272,7 +272,7 @@ class Host(Protocol):
 
     def chromium_command(self) -> str | None: ...
 
-    def mpv_command(self) -> str | None: ...
+    def vlc_command(self) -> str | None: ...
 
     def wtype_command(self) -> str | None: ...
 
