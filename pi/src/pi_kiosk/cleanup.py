@@ -30,7 +30,12 @@ from pi_kiosk.steps.rotation import DEFAULT_OUTPUT, multi_display_command
 from pi_kiosk.steps.rotation import END as ROTATION_END
 from pi_kiosk.steps.touch import BEGIN as TOUCH_BEGIN
 from pi_kiosk.steps.touch import END as TOUCH_END
-from pi_kiosk.steps.video_kiosk import SCREENS_RC_BEGIN, SCREENS_RC_END
+from pi_kiosk.steps.video_kiosk import (
+    PIN_RC_BEGIN,
+    PIN_RC_END,
+    SCREENS_RC_BEGIN,
+    SCREENS_RC_END,
+)
 from pi_kiosk.totem_status import (
     STATUS_SERVICE_NAME,
     STATUS_TIMER_NAME,
@@ -49,6 +54,7 @@ AUTOSTART_BLOCKS = (
 RC_XML_BLOCKS = (
     (TOUCH_BEGIN, TOUCH_END),
     (CURSOR_RC_BEGIN, CURSOR_RC_END),
+    (PIN_RC_BEGIN, PIN_RC_END),
     (SCREENS_RC_BEGIN, SCREENS_RC_END),
 )
 

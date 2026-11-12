@@ -49,7 +49,6 @@ class FakeHost:
         deployed_video: VideoDeployment | None = None,
         chromium: str | None = "chromium-browser",
         vlc: str | None = "/usr/bin/vlc",
-        labwc_version: tuple[int, int, int] | None = None,
         wtype: str | None = "/usr/bin/wtype",
         swayidle: str | None = "/usr/bin/swayidle",
         touchscreen: bool = False,
@@ -87,7 +86,6 @@ class FakeHost:
         )
         self.chromium = chromium
         self.vlc = vlc
-        self.labwc = labwc_version
         self.wtype = wtype
         self.swayidle = swayidle
         self.touchscreen = touchscreen
@@ -234,9 +232,6 @@ class FakeHost:
 
     def vlc_command(self) -> str | None:
         return self.vlc
-
-    def labwc_version(self) -> tuple[int, int, int] | None:
-        return self.labwc
 
     def wtype_command(self) -> str | None:
         return self.wtype

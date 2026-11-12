@@ -84,11 +84,10 @@ def cursor_keybind_block(indent: str = "    ") -> str:
     )
 
 
-def upsert_cursor_keybind(original: str) -> str:
+def insert_in_keyboard(original: str, block: str) -> str:
+    """Add keybind lines to rc.xml's <keyboard>, creating it with the default keybinds if missing."""
     rc_xml_header = '<?xml version="1.0"?>\n<labwc_config>\n'
     rc_xml_footer = "</labwc_config>\n"
-    original = normalize_labwc_rc_xml(original)
-    block = cursor_keybind_block()
     keyboard_section = "\n".join(
         [
             "  <keyboard>",
@@ -99,12 +98,6 @@ def upsert_cursor_keybind(original: str) -> str:
     )
     if not original.strip():
         return f"{rc_xml_header}{keyboard_section}\n{rc_xml_footer}"
-    if CURSOR_RC_BEGIN in original and CURSOR_RC_END in original:
-        pre, rest = original.split(CURSOR_RC_BEGIN, 1)
-        _, post = rest.split(CURSOR_RC_END, 1)
-        if post.startswith("\n"):
-            post = post[1:]
-        return f"{pre}{block}\n{post}"
 
     keyboard_self_closing = "  <keyboard />"
     if keyboard_self_closing in original:
@@ -127,6 +120,18 @@ def upsert_cursor_keybind(original: str) -> str:
     if original and not original.endswith("\n"):
         original += "\n"
     return f"{original}{keyboard_section}\n"
+
+
+def upsert_cursor_keybind(original: str) -> str:
+    original = normalize_labwc_rc_xml(original)
+    block = cursor_keybind_block()
+    if original.strip() and CURSOR_RC_BEGIN in original and CURSOR_RC_END in original:
+        pre, rest = original.split(CURSOR_RC_BEGIN, 1)
+        _, post = rest.split(CURSOR_RC_END, 1)
+        if post.startswith("\n"):
+            post = post[1:]
+        return f"{pre}{block}\n{post}"
+    return insert_in_keyboard(original, block)
 
 
 def install_cursor_keybind(host: Host) -> None:

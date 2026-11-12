@@ -64,3 +64,17 @@ def upsert_labwc_rc_block(original: str, begin: str, end: str, body: str) -> str
     if original and not original.endswith("\n"):
         original += "\n"
     return f"{original}{block}\n"
+
+
+def remove_marked_lines(original: str, begin: str, end: str) -> str:
+    """Drop every line from the one with `begin` through the one with `end`."""
+    kept: list[str] = []
+    inside = False
+    for line in original.splitlines(keepends=True):
+        if begin in line:
+            inside = True
+        if not inside:
+            kept.append(line)
+        if end in line:
+            inside = False
+    return "".join(kept)

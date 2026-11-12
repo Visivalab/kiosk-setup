@@ -13,7 +13,7 @@ from pi_kiosk import audio_route
 from pi_kiosk.audio import screen_audio_output
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import DesktopSessionUnavailable, UserFacingError
-from pi_kiosk.files import read_or_empty, upsert_labwc_rc_block
+from pi_kiosk.files import normalize_labwc_rc_xml, read_or_empty, remove_marked_lines
 from pi_kiosk.host import VideoHost, VideoSource
 from pi_kiosk.shared_config import config as shared_config
 from pi_kiosk.steps.kiosk_common import (
@@ -21,8 +21,8 @@ from pi_kiosk.steps.kiosk_common import (
     NO_SESSION_NOTE,
     REBOOT,
     SIMULATE_AUTORUN,
+    insert_in_keyboard,
     install_kiosk_autostart,
-    remove_marked_block,
 )
 from pi_kiosk.ui import UI
 
@@ -101,8 +101,6 @@ VLC_OPTIONS = (
     # First-run privacy question and "continue where you left off?".
     "--no-qt-privacy-ask",
     "--qt-continue=0",
-    # No resize to the video's size at the start: see "Each video on its screen".
-    "--no-qt-video-autoresize",
 )
 _VLC_ARGS_LINE = f"VLC_ARGS=({' '.join(VLC_OPTIONS)})"
 
@@ -119,8 +117,9 @@ _LOOP_CHECK = (
 # it (or the cleanup stops it) and stays closed; any other end is a crash.
 RESTART_SECONDS = 2
 
-# The Qt window goes through XWayland, and "launch now" from the wizard runs the
-# launcher with WAYLAND_DISPLAY only. Find XWayland's display in that case.
+# On Bookworm VLC's window goes through XWayland, and everywhere the screens are
+# counted with xrandr. "launch now" from the wizard runs the launcher with
+# WAYLAND_DISPLAY only, so find XWayland's display in that case.
 _FIND_X11_DISPLAY = (
     'if [ -z "${DISPLAY:-}" ]; then',
     '  for socket in "${PI_KIOSK_X11_DIR:-/tmp/.X11-unix}"/X*; do',
@@ -129,57 +128,72 @@ _FIND_X11_DISPLAY = (
     "fi",
 )
 
-# Each video on its screen. VLC can choose it itself (--qt-fullscreen-screennumber),
-# but that is an X11 move followed by a fullscreen request, and labwc applies the
-# move late when the window is also changing size, and not at all before the
-# window is shown. The fullscreen then lands on the screen under the pointer. On
-# a Pi 4, two boots in five went wrong: the second video on the first screen
-# (explained by the above) or shifted over it (not explained; the position can
-# only have come from VLC). So labwc does it: a window rule moves each VLC to its screen when its window
-# first appears, and VLC only asks for fullscreen. The rule tells the players
-# apart by their X11 instance name, which Qt takes from RESOURCE_NAME and labwc
-# matches from 0.8.1 on. An older labwc keeps VLC's own choice.
-LABWC_PINS_FROM = (0, 8, 1)
+# Each video on its screen. VLC chooses it itself (--qt-fullscreen-screennumber),
+# and on a Pi 4 two boots in five went wrong: the second video on the first
+# screen, or shifted over it. So labwc puts it back. Each VLC shows its screen
+# in its window title, and a labwc keybind moves every such window to its
+# screen; the launcher presses it with wtype every few seconds, as the webapp
+# kiosk does to hide the pointer.
+# The title is what labwc can tell the players apart by. Raspberry Pi's VLC
+# opens a Wayland window when it can (always on Trixie), so there is no X11
+# window name to match: a window rule on RESOURCE_NAME, tried in 0.3.1, never
+# matched and every video opened on the first screen.
+PIN_KEYBIND = "A-W-v"
+PIN_PRESS = "-M alt -M logo -P v"
+PIN_RC_BEGIN = "<!-- pi-kiosk-setup:video-pin-begin -->"
+PIN_RC_END = "<!-- pi-kiosk-setup:video-pin-end -->"
+# The window rules of 0.3.1.
 SCREENS_RC_BEGIN = "<!-- pi-kiosk-setup:video-screens-begin -->"
 SCREENS_RC_END = "<!-- pi-kiosk-setup:video-screens-end -->"
+# Pressed every 2 s for the first minute, while the players start, then every
+# 30 s for a VLC that was started again after a crash.
+PIN_FAST_SECONDS = 2
+PIN_FAST_TIMES = 30
+PIN_SLOW_SECONDS = 30
 
 
 def rc_xml_path(home: str) -> str:
     return f"{home}/.config/labwc/rc.xml"
 
 
-def window_name(output: str) -> str:
+def window_title(output: str) -> str:
     return f"pi-kiosk-{output}"
 
 
-def screen_rules(outputs: list[str]) -> str:
-    lines = ["  <windowRules>"]
+def pin_keybind_block(outputs: list[str]) -> str:
+    lines = [f"    {PIN_RC_BEGIN}", f'    <keybind key="{PIN_KEYBIND}">']
     for output in outputs:
+        # VLC adds " - VLC media player" (translated) after the title.
+        title = html.escape(f"{window_title(output)} - *")
         lines += [
-            f'    <windowRule identifier="{html.escape(window_name(output))}">',
-            f'      <action name="MoveToOutput" output="{html.escape(output)}" />',
-            "    </windowRule>",
+            '      <action name="ForEach">',
+            f'        <query title="{title}" />',
+            "        <then>",
+            f'          <action name="MoveToOutput" output="{html.escape(output)}" />',
+            "        </then>",
+            "      </action>",
         ]
-    lines.append("  </windowRules>")
+    lines += ["    </keybind>", f"    {PIN_RC_END}"]
     return "\n".join(lines)
 
 
-def write_screen_rules(host: VideoHost, outputs: list[str]) -> None:
-    """One rule per screen; with no screens, the rules of an earlier setup are removed."""
+def write_screen_pins(host: VideoHost, outputs: list[str]) -> None:
+    """The keybind for these screens; with none, what an earlier setup wrote is removed."""
     path = rc_xml_path(host.home())
     original = read_or_empty(host, path)
+    updated = original
+    for begin, end in ((PIN_RC_BEGIN, PIN_RC_END), (SCREENS_RC_BEGIN, SCREENS_RC_END)):
+        updated = remove_marked_lines(updated, begin, end)
     if outputs:
         host.mkdir(f"{host.home()}/.config/labwc")
-        updated = upsert_labwc_rc_block(original, SCREENS_RC_BEGIN, SCREENS_RC_END, screen_rules(outputs))
-    else:
-        updated = remove_marked_block(original, SCREENS_RC_BEGIN, SCREENS_RC_END)
+        updated = insert_in_keyboard(normalize_labwc_rc_xml(updated), pin_keybind_block(outputs))
     if updated != original:
         host.write_file(path, updated)
 
 
-# Where labwc cannot do it, VLC picks the fullscreen screen by number, counted
-# as Qt sees XWayland's screens: in xrandr order, primary first. XWayland names
-# them after the Wayland outputs (HDMI-A-1). Otherwise the wizard's order is used.
+# VLC picks the fullscreen screen by number, counted as Qt sees the screens: in
+# xrandr order, primary first. XWayland names them after the Wayland outputs
+# (HDMI-A-1). Otherwise the wizard's order is used.
 _SCREEN_NUMBER = (
     "screen_number() {",
     '  local want="$1" fallback="$2" i=0 name',
@@ -249,31 +263,34 @@ def multi_launcher_script(
     vlc: str,
     players: list[tuple[str, str, bool]],
     audio_device: str = "",
-    labwc_pins: bool = False,
+    wtype: str = "",
 ) -> str:
     """One VLC per screen, each fullscreen on its own output; only one keeps its sound.
 
-    With labwc_pins, labwc's window rules put each VLC on its screen and VLC is
-    not given a screen number.
+    With wtype, the launcher keeps pressing the labwc keybind that moves each
+    VLC to its screen.
     """
     lines = [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
         f"VLC={shlex.quote(vlc)}",
         f"AUDIO_DEVICE={shlex.quote(audio_device)}",
+        f"WTYPE={shlex.quote(wtype)}",
         _VLC_ARGS_LINE,
         *_LOOP_CHECK,
         *_FIND_X11_DISPLAY,
         'STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/pi-kiosk"',
         'mkdir -p "$STATE_DIR"',
         "pids=()",
+        'pinner=""',
         "cleanup() {",
+        '  if [ -n "$pinner" ]; then kill "$pinner" >/dev/null 2>&1 || true; fi',
         '  if [ "${#pids[@]}" -gt 0 ]; then kill "${pids[@]}" >/dev/null 2>&1 || true; fi',
         '  rm -f "$STATE_DIR"/display-*.pid',
         "}",
         "trap cleanup EXIT",
         "trap 'exit 0' INT TERM",
-        *(() if labwc_pins else _SCREEN_NUMBER),
+        *_SCREEN_NUMBER,
         _AUDIO_ROUTE_LINE,
         'sink=""',
     ]
@@ -286,13 +303,12 @@ def multi_launcher_script(
         ]
     lines += [
         "start_player() {",
-        '  local output="$1" video="$2" sound="$3" fallback="${4:-}"',
-        "  # The name labwc's window rule knows this screen's VLC by.",
-        '  local run=(env RESOURCE_NAME="pi-kiosk-$output") extra=(--no-audio)',
+        '  local output="$1" video="$2" sound="$3" fallback="$4"',
+        '  local run=() extra=(--no-audio)',
         '  if [ "$sound" = "yes" ]; then',
         "    extra=()",
         "    # An empty PULSE_SINK would name no device at all; leave it unset then.",
-        '    if [ -n "$sink" ]; then run+=(PULSE_SINK="$sink"); fi',
+        '    if [ -n "$sink" ]; then run=(env PULSE_SINK="$sink"); fi',
         "  fi",
         "  # One keeper per screen: it starts VLC again if it crashes. Closed by a",
         "  # person, or stopped with this launcher, VLC stays closed.",
@@ -304,15 +320,10 @@ def multi_launcher_script(
         "    }",
         "    trap stop INT TERM",
         "    while :; do",
-        *(
-            ('      "${run[@]}" "$VLC" "${VLC_ARGS[@]}" "${extra[@]}" "$video" &',)
-            if labwc_pins
-            else (
-                '      screen="$(screen_number "$output" "$fallback")"',
-                '      "${run[@]}" "$VLC" "${VLC_ARGS[@]}" --qt-fullscreen-screennumber="$screen" \\',
-                '        "${extra[@]}" "$video" &',
-            )
-        ),
+        '      screen="$(screen_number "$output" "$fallback")"',
+        "      # The title is how labwc's keybind finds this screen's VLC.",
+        '      "${run[@]}" "$VLC" "${VLC_ARGS[@]}" --qt-fullscreen-screennumber="$screen" \\',
+        '        --input-title-format="pi-kiosk-$output" "${extra[@]}" "$video" &',
         '      player="$!"',
         '      echo "$player" >"$STATE_DIR/display-$output.pid"',
         "      status=0",
@@ -326,9 +337,24 @@ def multi_launcher_script(
     ]
     for number, (output, video_path, audio) in enumerate(players):
         sound = "yes" if audio else "no"
-        fallback = "" if labwc_pins else f" {number}"
-        lines.append(f"start_player {shlex.quote(output)} {shlex.quote(video_path)} {sound}{fallback}")
-    lines += ["wait", ""]
+        lines.append(f"start_player {shlex.quote(output)} {shlex.quote(video_path)} {sound} {number}")
+    lines += [
+        "# labwc moves each VLC to its screen when this keybind is pressed (rc.xml).",
+        'if [ -n "$WTYPE" ]; then',
+        "  (",
+        f"    for _ in $(seq {PIN_FAST_TIMES}); do",
+        f'      sleep {PIN_FAST_SECONDS}; "$WTYPE" {PIN_PRESS} >/dev/null 2>&1 || true',
+        "    done",
+        "    while :; do",
+        f'      sleep {PIN_SLOW_SECONDS}; "$WTYPE" {PIN_PRESS} >/dev/null 2>&1 || true',
+        "    done",
+        "  ) &",
+        '  pinner="$!"',
+        "fi",
+        "# Only the players: the pressing loop never ends on its own.",
+        'wait "${pids[@]}"',
+        "",
+    ]
     return "\n".join(lines)
 
 
@@ -394,7 +420,7 @@ class VideoKioskStep:
             launcher_path(home),
             launcher_script(vlc, deployment.video_path),
         )
-        write_screen_rules(host, [])
+        write_screen_pins(host, [])
         install_kiosk_autostart(host, launcher_path(home))
         if context is not None:
             context.state[self.id] = replace(
@@ -445,15 +471,15 @@ class VideoKioskStep:
             for screen, deployment in zip(request.screens, deployments)
         ]
         audio = next((screen.output for screen in request.screens if screen.audio), None)
-        labwc = host.labwc_version()
-        labwc_pins = labwc is not None and labwc >= LABWC_PINS_FROM
+        wtype = host.wtype_command()
+        if wtype is None:
+            host.ensure_packages_installed(("wtype",))
+            wtype = host.wtype_command()
         host.write_file(
             launcher_path(home),
-            multi_launcher_script(vlc, players, request.audio_device, labwc_pins),
+            multi_launcher_script(vlc, players, request.audio_device, wtype or ""),
         )
-        # Written for any labwc: an older one never matches them, and they are
-        # already there after an upgrade.
-        write_screen_rules(host, [screen.output for screen in request.screens])
+        write_screen_pins(host, [screen.output for screen in request.screens])
         install_kiosk_autostart(host, launcher_path(home))
         if context is not None:
             context.state[self.id] = replace(
@@ -468,14 +494,12 @@ class VideoKioskStep:
         names = ", ".join(
             f"{screen.output}: {deployment.file_name}" for screen, deployment in zip(request.screens, deployments)
         )
-        if labwc_pins:
-            screens_report = "labwc keeps each video on its screen."
+        if wtype:
+            screens_report = "labwc puts back a video that starts on the wrong screen."
         else:
-            found = "labwc " + ".".join(map(str, labwc)) if labwc else "this labwc"
-            needed = ".".join(map(str, LABWC_PINS_FROM))
             screens_report = (
-                f"WARNING - screens: {found} cannot keep each video on its screen "
-                f"(needs {needed}); VLC chooses the screen itself, which can fail at boot."
+                "WARNING - screens: wtype could not be installed, so a video that "
+                "starts on the wrong screen stays there."
             )
         report = (
             f"Done: video kiosk deployed on {len(deployments)} displays ({names}). "

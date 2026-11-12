@@ -615,15 +615,13 @@ Wayland output crashes on a Pi 5. The options are in `VLC_ARGS`:
 ```text
 --no-one-instance --fullscreen --repeat --no-video-title-show --no-osd
 --no-qt-fs-controller --mouse-hide-timeout=0 --no-mouse-events
---no-qt-privacy-ask --qt-continue=0 --no-qt-video-autoresize
+--no-qt-privacy-ask --qt-continue=0
 ```
 
 Fullscreen, looping, no title, controls or cursor over the video.
 `--no-mouse-events` keeps a double tap on a touchscreen from leaving
 fullscreen; the keyboard stays available. The last two skip VLC's first-run
-privacy question and its "continue where you left off?" prompt;
-`--no-qt-video-autoresize` keeps VLC from resizing its window when the video
-starts (see "How does each video find its screen?"). VLC refuses to
+privacy question and its "continue where you left off?" prompt. VLC refuses to
 start on an unknown option, so all of these exist in VLC 3.0 on any Linux
 build.
 
@@ -657,47 +655,54 @@ screens. A normal start (login, reboot) plays the whole video.
 
 ### How does each video find its screen?
 
-labwc puts it there. Each VLC is started with its own X11 window name
-(`RESOURCE_NAME=pi-kiosk-HDMI-A-2`), and the wizard writes one window rule per
-screen in `<home>/.config/labwc/rc.xml`, between the
-`pi-kiosk-setup:video-screens` markers:
+In two steps: VLC chooses the screen, and labwc puts the video back if it
+ended up somewhere else.
+
+VLC picks the fullscreen screen by number (`--qt-fullscreen-screennumber`), as
+on Windows. The number is counted the way Qt sees the screens, in `xrandr`
+order, primary first; XWayland names them after the Wayland outputs
+(`HDMI-A-1`), so at every start the launcher looks the output up in
+`xrandr --query`. If `xrandr` is missing or uses other names, it falls back to
+the order the wizard detected.
+
+That alone was not reliable. On a Pi 4 with two screens, two boots in five
+went wrong: the second screen's video came up on the first screen, or shifted
+over it. So each VLC also shows its screen in its window title
+(`--input-title-format=pi-kiosk-HDMI-A-2`), and the wizard writes a labwc
+keybind in `<home>/.config/labwc/rc.xml`, between the
+`pi-kiosk-setup:video-pin` markers, that moves every such window to its screen:
 
 ```xml
-<windowRule identifier="pi-kiosk-HDMI-A-2">
-  <action name="MoveToOutput" output="HDMI-A-2" />
-</windowRule>
+<keybind key="A-W-v">
+  <action name="ForEach">
+    <query title="pi-kiosk-HDMI-A-2 - *" />
+    <then><action name="MoveToOutput" output="HDMI-A-2" /></then>
+  </action>
+</keybind>
 ```
 
-labwc applies the rule when the window first appears, and VLC only asks for
-fullscreen, so the video fills the screen labwc chose. A VLC started again
-after a crash keeps its name and goes back to the same screen.
+The launcher presses it with `wtype` (Alt+Super+V) every 2 seconds for the
+first minute and every 30 seconds after that, so a video that starts on the
+wrong screen is moved within a couple of seconds, and a VLC started again
+after a crash within half a minute. A video already on its screen is not
+moved. The wizard installs `wtype` if it is missing; without it the final
+report shows a `WARNING - screens` line and VLC's own choice is all there is.
 
-Before 0.3.1 VLC chose the screen itself (`--qt-fullscreen-screennumber`, as
-on Windows). On a Pi 4 with two screens that failed two boots in five: the
-second screen's video came up on the first screen, or shifted over it. VLC's
-choice is an X11 move followed by a fullscreen request. labwc applies the move
-late when the window is also changing size, and not at all before the window
-is shown; the fullscreen then lands on the screen under the pointer. That
-explains the video on the wrong screen. The shifted video is not explained:
-labwc on its own only puts a fullscreen window exactly on a screen, so the
-position must have come from VLC, but the exact sequence was not found.
-`--no-qt-video-autoresize` is there so that VLC sends labwc no position at
-all: a resize sent right after labwc moved the window would carry the old one.
-
-labwc tells XWayland windows apart by that name from version 0.8.1 on
-(`labwc --version`). With an older labwc the launcher keeps VLC's own choice
-and the wizard's final report says so with a `WARNING - screens` line. The
-number is then counted the way Qt sees XWayland's screens, in `xrandr` order,
-primary first, and falls back to the order the wizard detected.
+The title is used because it is what labwc sees for every kind of window.
+Raspberry Pi's VLC opens a Wayland window when it can (on Trixie, since its
+October 2026 "qt: Prefer Wayland to X11" patch; on Bookworm it prefers
+XWayland). Version 0.3.1 tried a labwc
+window rule matched by the X11 window name instead: on Trixie it never
+matched and every video opened on the first screen.
 
 The wizard's "launch now" runs the launcher with `WAYLAND_DISPLAY` only. When
 `DISPLAY` is empty, the launcher takes XWayland's display from its socket in
 `/tmp/.X11-unix`.
 
-The rule has not been tried on a real Pi yet. If a video comes up on the wrong
-screen, send the output of `labwc --version` and of
-`xprop WM_CLASS` (then click the video): the first name must be
-`pi-kiosk-<screen>`.
+The keybind has not been tried on a real Pi yet. To check it by hand, with the
+videos playing, run `wtype -M alt -M logo -P v` in a terminal (over SSH:
+`WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/$(id -u) wtype ...`); a
+video on the wrong screen must jump to its own.
 
 ### Why can the video take a few seconds to start after boot?
 

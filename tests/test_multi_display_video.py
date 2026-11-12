@@ -183,7 +183,8 @@ class ApplyMultiDisplayVideoTests(unittest.TestCase):
         )
         self.assertIn("AUDIO_DEVICE=pulse/alsa_output.hdmi-1", script)
         self.assertIn("display-$output.pid", script)
-        self.assertEqual(script.splitlines()[-1], "wait")
+        # Only the players are waited for: the loop that presses labwc's keybind never ends.
+        self.assertEqual(script.splitlines()[-1], 'wait "${pids[@]}"')
 
     def test_every_screen_gets_its_own_vlc(self):
         host = FakeHost(wayland_outputs=TWO_OUTPUTS)

@@ -21,7 +21,7 @@ import zipfile
 from pi_kiosk.audio import sinks_to_outputs
 from pi_kiosk.audio_route import list_sinks
 from pi_kiosk.detect import looks_like_raspberry_pi
-from pi_kiosk.display import parse_drm_connectors, parse_labwc_version, parse_wlr_randr
+from pi_kiosk.display import parse_drm_connectors, parse_wlr_randr
 from pi_kiosk.machine import (
     detect_platform,
     display_manager_from_unit,
@@ -682,19 +682,6 @@ class LinuxHost:
 
     def vlc_command(self) -> str | None:
         return shutil.which("vlc")
-
-    def labwc_version(self) -> tuple[int, int, int] | None:
-        try:
-            result = subprocess.run(
-                ["labwc", "--version"],
-                check=False,
-                text=True,
-                capture_output=True,
-                timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return parse_labwc_version(result.stdout + result.stderr)
 
     def wtype_command(self) -> str | None:
         return shutil.which("wtype")

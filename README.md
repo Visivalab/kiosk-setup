@@ -133,8 +133,9 @@ session relies on `xdg-desktop-portal-wlr` for screen sharing.
    - installs a labwc cursor-hide keybind and, when `wtype` and `swayidle`
      are available, re-hides the mouse cursor after idle
 7. Or a looping video kiosk in VLC. With several screens each screen plays its
-   own video, fullscreen on its output (a labwc window rule per screen moves
-   each VLC there). Only one screen plays sound; the others run with `--no-audio`. A
+   own video, fullscreen on its output (`--qt-fullscreen-screennumber`, as on
+   Windows; a labwc keybind pressed by the launcher puts back a video that
+   starts on the wrong screen). Only one screen plays sound; the others run with `--no-audio`. A
    chosen audio output that has disappeared falls back to the default output.
 8. Saves the setup (never passwords) to `/etc/pi-kiosk/kiosk-state.json`, so
    `register-totem` and the visual wizard can reuse it.
