@@ -142,7 +142,7 @@ class TotemRegistrar:
             if registration.skip_rustdesk
             else host.connection_details()
         )
-        host.register_totem(
+        totem_id = host.register_totem(
             config.endpoint_url,
             config.token,
             machine_name,
@@ -159,7 +159,7 @@ class TotemRegistrar:
                 TotemStatusReporterConfig(
                     endpoint_url=status_endpoint_url,
                     token=config.token,
-                    totem_id=machine_name,
+                    totem_id=totem_id,
                     totem_type=registration.totem_type,
                     desktop_user=host.user(),
                     screens=registration.screens,

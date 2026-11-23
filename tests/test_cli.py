@@ -167,6 +167,7 @@ class CliTests(unittest.TestCase):
             host.totem_registration_requests,
             [
                 {
+                    "totem_id": mock.ANY,
                     "endpoint_url": "https://dashboard.example.com/register-new-totem",
                     "token": "totem-secret",
                     "machine_name": "minipc-07",
@@ -239,7 +240,8 @@ class CliTests(unittest.TestCase):
         install = host.totem_status_reporter_installs[0]
         self.assertEqual(install.endpoint_url, "https://dashboard.example.com/totem-status")
         self.assertEqual(install.token, "totem-secret")
-        self.assertEqual(install.totem_id, "minipc-07")
+        self.assertEqual(install.totem_id, host.totem_registration_requests[0]["totem_id"])
+        self.assertNotEqual(install.totem_id, "minipc-07")
         self.assertEqual(install.totem_type, "webapp")
         self.assertEqual(install.desktop_user, "kiosk")
         self.assertEqual(host.connection_details_requests, [None, None])

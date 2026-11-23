@@ -210,7 +210,7 @@ class TotemRegistrationHost(UserHost, RustDeskHost, Protocol):
         location: str,
         connection: TotemConnectionDetails,
         screens: tuple[dict, ...] = (),
-    ) -> None: ...
+    ) -> str: ...
 
     def install_totem_status_reporter(
         self,
@@ -318,7 +318,7 @@ class Host(Protocol):
         location: str,
         connection: TotemConnectionDetails,
         screens: tuple[dict, ...] = (),
-    ) -> None: ...
+    ) -> str: ...
 
     def install_totem_status_reporter(
         self,

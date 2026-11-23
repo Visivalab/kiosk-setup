@@ -12,10 +12,12 @@ import subprocess
 import tempfile
 import time
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Callable
 from urllib import error, request
 from urllib.parse import unquote, urlparse
+from uuid import UUID, uuid4
 import zipfile
 
 from pi_kiosk.audio import sinks_to_outputs
@@ -55,6 +57,7 @@ class NeedSudoUser(RuntimeError):
     """The tool must know which desktop user's home to modify."""
 
 
+TOTEM_IDENTITIES_PATH = Path("/etc/pi-kiosk/totem-identities")
 RUSTDESK_CREDENTIALS_PATH = Path("/etc/pi-kiosk/rustdesk.json")
 RUSTDESK_PASSWORD_SUCCESS_TEXT = "Done!"
 RUSTDESK_UNATTENDED_OPTIONS = (
@@ -390,6 +393,31 @@ class RustDeskService:
         return "Could not start RustDesk in the desktop session."
 
 
+def _persistent_totem_id(endpoint_url: str, name: str, location: str) -> str:
+    profile = json.dumps((endpoint_url.strip(), name.strip(), location.strip()))
+    path = TOTEM_IDENTITIES_PATH / sha256(profile.encode("utf-8")).hexdigest()
+    try:
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # Publish a complete UUID before posting. An overlapping registration
+            # or a retry after a lost response must reuse the same ID.
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="ascii", dir=path.parent, delete=False
+            ) as stream:
+                temporary_path = Path(stream.name)
+                try:
+                    stream.write(f"{uuid4()}\n")
+                    stream.flush()
+                    os.link(temporary_path, path)
+                except FileExistsError:
+                    pass
+                finally:
+                    temporary_path.unlink()
+        return str(UUID(path.read_text(encoding="ascii").strip()))
+    except (OSError, ValueError) as exc:
+        raise UserFacingError(f"Could not save or read the totem identity: {exc}.") from exc
+
+
 class TotemRegistrationClient:
     def register(
         self,
@@ -402,9 +430,10 @@ class TotemRegistrationClient:
         location: str,
         connection: TotemConnectionDetails,
         screens: tuple[dict, ...] = (),
-    ) -> None:
+    ) -> str:
+        totem_id = _persistent_totem_id(endpoint_url, totem_name, location)
         payload = {
-            "totem_id": machine_name,
+            "totem_id": totem_id,
             "totemType": totem_type,
             "machineName": machine_name,
             "machineId": _machine_id(),
@@ -441,6 +470,7 @@ class TotemRegistrationClient:
 
         if status < 200 or status >= 300:
             raise UserFacingError(f"Totem registration failed with HTTP {status}.")
+        return totem_id
 
 
 class TotemStatusReporterInstaller:
@@ -788,8 +818,8 @@ class LinuxHost:
         location: str,
         connection: TotemConnectionDetails,
         screens: tuple[dict, ...] = (),
-    ) -> None:
-        self._totem_registration.register(
+    ) -> str:
+        return self._totem_registration.register(
             endpoint_url,
             token,
             machine_name,

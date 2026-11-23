@@ -748,9 +748,12 @@ No dedicated video log file is configured by `pi-kiosk`.
 
 ### What identifies the totem?
 
-At registration time, the current system hostname is used as `totem_id` and
-`machineName`. The contents of `/etc/machine-id`, when available, are also sent
-as `machineId`.
+Each totem gets a UUID at registration. The wizard saves it locally and reuses
+it for the same registry endpoint, totem name and location. Choose a different
+name or location when reusing a computer for a different totem. The hostname
+is sent separately as `machineName`, and `/etc/machine-id` is sent as `machineId`
+when available. A new registration with this wizard creates a UUID entry;
+legacy hostname entries retain their existing history.
 
 The registration additionally sends the selected project type, display name,
 optional description and location, registration time, and available RustDesk
@@ -816,7 +819,8 @@ then runs it:
 
 The reporter sends:
 
-- `totem_id`: the hostname captured at registration time.
+- `totem_id`: the UUID saved when the totem was registered. Legacy installations
+  continue to use their recorded ID until registered with the updated wizard.
 - `totem_type`: `webapp` or `video`.
 - `machineName`: the hostname at the time of the status check.
 - `checkedAt`: the current UTC timestamp.

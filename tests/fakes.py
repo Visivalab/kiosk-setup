@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Callable
+from uuid import uuid4
 
 from pi_kiosk.host import (
     AudioOutput,
@@ -112,6 +113,7 @@ class FakeHost:
         self.installed_packages: list[tuple[str, ...]] = []
         self.directories: set[str] = set()
         self.totem_registration_requests: list[dict[str, str]] = []
+        self.totem_identities: dict[tuple[str, str, str], str] = {}
         self.totem_status_reporter_installs: list[TotemStatusReporterConfig] = []
         self.connection_details_requests: list[str | None] = []
 
@@ -314,9 +316,12 @@ class FakeHost:
         location: str,
         connection: TotemConnectionDetails,
         screens: tuple[dict, ...] = (),
-    ) -> None:
+    ) -> str:
+        profile = (endpoint_url, totem_name, location)
+        totem_id = self.totem_identities.setdefault(profile, str(uuid4()))
         self.totem_registration_requests.append(
             {
+                "totem_id": totem_id,
                 "endpoint_url": endpoint_url,
                 "token": token,
                 "machine_name": machine_name,
@@ -328,6 +333,7 @@ class FakeHost:
                 "screens": screens,
             }
         )
+        return totem_id
 
     def install_totem_status_reporter(
         self,

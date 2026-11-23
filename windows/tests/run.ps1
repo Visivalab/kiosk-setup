@@ -597,10 +597,26 @@ Assert-Equal 4 $script:secretPrompts.Count 'Both entries should be requested aga
               [string] $ContentType, [string] $Body)
         $script:registrationPayload = $Body | ConvertFrom-Json
     }
-    function Install-KioskStatusReporter { param($Endpoint, $Token, $Displays) }
-    Register-KioskTotem -TotemType video -Displays $noPassword.Displays -Name 'Lobby' -SkipRustDesk
-    Assert-Equal $null $script:registrationPayload.rustdeskId 'Skipped RustDesk IDs must not be sent to registration.'
-    Assert-Equal $null $script:registrationPayload.rustdeskPassword 'Skipped RustDesk passwords must not be sent to registration.'
+    function Install-KioskStatusReporter { param($Endpoint, $Token, $Displays, $TotemId) $script:statusTotemId = $TotemId }
+    $identityRoot = Join-Path ([IO.Path]::GetTempPath()) ("pi-kiosk identity tests " + [guid]::NewGuid())
+    function Get-KioskMachineRoot { $identityRoot }
+    try {
+        Register-KioskTotem -TotemType video -Displays $noPassword.Displays -Name 'Lobby' -Location 'Entrance' -SkipRustDesk
+        $firstId = $script:registrationPayload.totem_id
+        Assert-Match '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' $firstId 'Registration uses a UUID.'
+        Assert-Equal $firstId $script:statusTotemId 'Status must use the same ID as the registration.'
+        Assert-Equal $env:COMPUTERNAME $script:registrationPayload.machineName 'The reported machine name remains the hostname.'
+        Assert-Equal $null $script:registrationPayload.rustdeskId 'Skipped RustDesk IDs must not be sent to registration.'
+        Assert-Equal $null $script:registrationPayload.rustdeskPassword 'Skipped RustDesk passwords must not be sent to registration.'
+
+        Register-KioskTotem -TotemType video -Displays $noPassword.Displays -Name 'Lobby' -Location 'Exit' -SkipRustDesk
+        if ($script:registrationPayload.totem_id -eq $firstId) { throw 'Different totems on one PC must have different IDs.' }
+
+        Register-KioskTotem -TotemType video -Displays $noPassword.Displays -Name 'Lobby' -Location 'Entrance' -SkipRustDesk
+        Assert-Equal $firstId $script:registrationPayload.totem_id 'Registering the same totem again reuses its ID.'
+    } finally {
+        Remove-Item -Recurse -Force $identityRoot -ErrorAction SilentlyContinue
+    }
 }
 
 Write-Host "Windows kiosk tests passed."

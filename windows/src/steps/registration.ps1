@@ -78,7 +78,7 @@ function Register-KioskTotemNow {
 }
 
 function Install-KioskStatusReporter {
-    param([string] $Endpoint, [string] $Token, [object[]] $Displays)
+    param([string] $Endpoint, [string] $Token, [object[]] $Displays, [string] $TotemId)
 
     $root = Get-KioskMachineRoot
     $configPath = Join-Path $root "totem-status.json"
@@ -91,7 +91,7 @@ function Install-KioskStatusReporter {
     [ordered]@{
         endpointUrl = $Endpoint
         token = $Token
-        totemId = $env:COMPUTERNAME
+        totemId = $TotemId
         totemType = @($Displays)[0].Type
         port = $reportedPort
         stateDir = Join-Path (Get-KioskRoot) "state"
@@ -115,6 +115,34 @@ function Get-KioskStatusEndpoint {
     $builder.Query = ""
     $builder.Fragment = ""
     $builder.Uri.AbsoluteUri
+}
+
+function Get-KioskTotemId {
+    param([string] $Endpoint, [string] $Name, [string] $Location)
+
+    $profile = ConvertTo-Json -InputObject @($Endpoint.Trim(), $Name.Trim(), $Location.Trim()) -Compress
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $key = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($profile))).Replace("-", "").ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
+    $root = Join-Path (Get-KioskMachineRoot) "totem-identities"
+    $path = Join-Path $root $key
+    if (-not [IO.File]::Exists($path)) {
+        [void] [IO.Directory]::CreateDirectory($root)
+        $temporary = Join-Path $root ([guid]::NewGuid().ToString("N") + ".tmp")
+        try {
+            [IO.File]::WriteAllText($temporary, [guid]::NewGuid().ToString("D"))
+            # Move without replacing so concurrent registrations use the same UUID.
+            [IO.File]::Move($temporary, $path)
+        } catch {
+            if (-not [IO.File]::Exists($path)) { throw }
+        } finally {
+            [IO.File]::Delete($temporary)
+        }
+    }
+    [guid]::ParseExact([IO.File]::ReadAllText($path).Trim(), "D").ToString("D")
 }
 
 function Register-KioskTotem {
@@ -142,9 +170,10 @@ function Register-KioskTotem {
     $machineId = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Cryptography").MachineGuid
     $endpoint = if ($env:PI_KIOSK_REGISTER_TOTEM_URL) { $env:PI_KIOSK_REGISTER_TOTEM_URL } else { $script:SharedConfig.registerTotemUrl }
     $token = if ($env:PI_KIOSK_REGISTER_TOTEM_TOKEN) { $env:PI_KIOSK_REGISTER_TOTEM_TOKEN } else { $script:SharedConfig.registerTotemToken }
+    $totemId = Get-KioskTotemId -Endpoint $endpoint -Name $Name -Location $Location
     $screens = ConvertTo-KioskScreenReport $Displays
     $payload = [ordered]@{
-        totem_id = $env:COMPUTERNAME; totemType = $TotemType; machineName = $env:COMPUTERNAME;
+        totem_id = $totemId; totemType = $TotemType; machineName = $env:COMPUTERNAME;
         machineId = $machineId; name = $name; description = $description; location = $location;
         rustdeskId = $credentials.id; rustdeskPassword = $credentials.password;
         screenCount = $screens.Count; screens = $screens;
@@ -153,6 +182,6 @@ function Register-KioskTotem {
     Write-KioskProgress "Registering totem"
     Invoke-WebRequest -UseBasicParsing -Method Post -Uri $endpoint -Headers @{ Authorization = "Bearer $token" } -ContentType "application/json" -Body $payload | Out-Null
     $statusEndpoint = Get-KioskStatusEndpoint $endpoint
-    Install-KioskStatusReporter $statusEndpoint $token $Displays
+    Install-KioskStatusReporter -Endpoint $statusEndpoint -Token $token -Displays $Displays -TotemId $totemId
     Write-KioskDone "totem registered for machine $env:COMPUTERNAME with $($screens.Count) screen(s). Status reporter installed."
 }

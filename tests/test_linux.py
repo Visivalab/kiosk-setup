@@ -9,6 +9,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest import mock
 from urllib import error
+from uuid import UUID
 
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import TotemConnectionDetails, TotemStatusReporterConfig, VideoSource, WebAppSource
@@ -17,6 +18,7 @@ from pi_kiosk.linux import (
     LinuxHost,
     NeedSudoUser,
     _libinput_reports_touch,
+    _persistent_totem_id,
     _select_rustdesk_deb_asset,
 )
 
@@ -1050,8 +1052,22 @@ class LinuxHostTests(unittest.TestCase):
 
             self.assertEqual(old.read_bytes(), b"o" * 2, "the running kiosk keeps its video")
 
-    def test_register_totem_posts_json_payload_with_machine_name(self):
+    def test_totem_identity_is_persistent_and_scoped_to_a_registration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch("pi_kiosk.linux.TOTEM_IDENTITIES_PATH", Path(directory)):
+                endpoint = "https://dashboard.example.com/register-totem"
+                first = _persistent_totem_id(endpoint, "Video", "Entrance")
+                second = _persistent_totem_id(endpoint, "Video", "Exit")
+                repeated = _persistent_totem_id(endpoint, "Video", "Entrance")
+
+        self.assertEqual(UUID(first).version, 4)
+        self.assertNotEqual(first, second)
+        self.assertEqual(first, repeated)
+
+    def test_register_totem_posts_a_separate_id_and_machine_name(self):
         host = LinuxHost()
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(mock.patch("pi_kiosk.linux.TOTEM_IDENTITIES_PATH", Path(directory)))
 
         with mock.patch("socket.gethostname", return_value="minipc-07"):
             with mock.patch("pi_kiosk.linux._machine_id", return_value="machine-123"):
@@ -1059,7 +1075,7 @@ class LinuxHostTests(unittest.TestCase):
                     "urllib.request.urlopen",
                     return_value=FakeResponse(b"{}", status=201),
                 ) as urlopen:
-                    host.register_totem(
+                    totem_id = host.register_totem(
                         "https://dashboard.example.com/register-new-totem",
                         "totem-secret",
                         "minipc-07",
@@ -1078,6 +1094,7 @@ class LinuxHostTests(unittest.TestCase):
                     )
 
         request = urlopen.call_args.args[0]
+        self.assertEqual(UUID(totem_id).version, 4)
         self.assertEqual(request.full_url, "https://dashboard.example.com/register-new-totem")
         self.assertEqual(request.get_method(), "POST")
         self.assertEqual(request.get_header("Authorization"), "Bearer totem-secret")
@@ -1085,7 +1102,7 @@ class LinuxHostTests(unittest.TestCase):
         self.assertEqual(
             json.loads(request.data.decode("utf-8")),
             {
-                "totem_id": "minipc-07",
+                "totem_id": totem_id,
                 "totemType": "webapp",
                 "machineName": "minipc-07",
                 "machineId": "machine-123",
@@ -1105,6 +1122,8 @@ class LinuxHostTests(unittest.TestCase):
 
     def test_register_totem_surfaces_backend_error_message(self):
         host = LinuxHost()
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(mock.patch("pi_kiosk.linux.TOTEM_IDENTITIES_PATH", Path(directory)))
         http_error = error.HTTPError(
             "https://dashboard.example.com/register-new-totem",
             400,

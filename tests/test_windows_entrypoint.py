@@ -276,7 +276,11 @@ class WindowsEntrypointTests(unittest.TestCase):
 
         self.assertIn("screenCount = $screens.Count", registration)
         self.assertIn("screens = $screens", registration)
-        self.assertIn("totem_id = $env:COMPUTERNAME", registration)
+        self.assertIn("totem_id = $totemId", registration)
+        self.assertIn("machineName = $env:COMPUTERNAME", registration)
+        self.assertIn("-TotemId $totemId", registration)
+        self.assertIn("totemId = $TotemId", registration)
+        self.assertIn("totem_id = $config.totemId", status)
         self.assertIn("screens = $screens", status)
         self.assertIn("kiosk_running", status)
         self.assertIn("webapp_running", status)

@@ -1,4 +1,5 @@
 import unittest
+from uuid import UUID
 from unittest import mock
 
 from tests.fake_ui import FakeUI
@@ -38,6 +39,28 @@ def _ui(answers: dict[str, str] | None = None) -> FakeUI:
     }
     values.update(answers or {})
     return FakeUI(answers=values)
+
+
+class TotemRegistrarIdentityTests(unittest.TestCase):
+    def test_same_machine_can_register_separate_totems_and_retry_each(self):
+        registrar = TotemRegistrar(config=CONFIG)
+        host = FakeHost()
+        entrance = registrar.ask(_ui({TOTEM_LOCATION_PROMPT: "Entrance"}))
+        exit_totem = registrar.ask(_ui({TOTEM_LOCATION_PROMPT: "Exit"}))
+
+        registrar.register(host, entrance)
+        registrar.register(host, exit_totem)
+        registrar.register(host, entrance)
+
+        first, second, repeated = [item.totem_id for item in host.totem_status_reporter_installs]
+        self.assertEqual(UUID(first).version, 4)
+        self.assertEqual(UUID(second).version, 4)
+        self.assertNotEqual(first, second)
+        self.assertEqual(repeated, first)
+        self.assertEqual(
+            [item["totem_id"] for item in host.totem_registration_requests],
+            [first, second, first],
+        )
 
 
 class TotemRegistrarRustDeskTests(unittest.TestCase):
